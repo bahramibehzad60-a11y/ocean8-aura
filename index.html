@@ -1,0 +1,1406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>OCEAN 8 // AURA — Synapse Interface</title>
+<meta name="description" content="Ocean 8 Aura Synapse Interface — live multi-agent system HUD.">
+<meta name="theme-color" content="#04101c">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='36' fill='none' stroke='%2300f0ff' stroke-width='7'/%3E%3Ccircle cx='50' cy='50' r='13' fill='%2300f0ff'/%3E%3C/svg%3E">
+
+<!--
+  =================================================================
+  OCEAN 8 // AURA — SYNAPSE INTERFACE  (v2 — Emerald/Jade overhaul)
+  =================================================================
+  BACKEND CONTRACT
+  GET /api/report should return JSON shaped like:
+
+  {
+    "agents": {
+      "ikigai":  { "status": "online|standby|warning|offline",
+                   "role": "...", "uptime": "99.9%", "latency": "12ms",
+                   "load": "34%", "lastAction": "...",
+                   "log": ["...", "..."] },
+      "wolf":{...}, "mercury":{...}, "saul":{...},
+      "scrooge":{...}, "shield":{...}, "spider":{...}
+    }
+  }
+
+  A flat object (no "agents" wrapper) also works. Extra per-agent
+  fields render automatically in the focus panel. Only "status" is
+  required. The four-stat HUD readout (ONLINE / AVG LATENCY /
+  AVG LOAD / CONFIDENCE) is computed client-side from whatever
+  "latency"/"load"/"status" values are present — no extra backend
+  fields needed for that.
+
+  If /api/report is unreachable, the interface falls back to demo
+  data and shows a DEMO MODE badge, re-checking every 20s and
+  upgrading to LIVE FEED automatically once your server responds.
+
+  Sending a message now goes to one of two places, chosen by
+  targetAgent — each agent has its own URL, there is no shared
+  request-router endpoint anymore:
+
+    POST /api/agents/<agent_id>/chat   (the 7 specialists)
+    POST /api/cyborg/chat              (cyborg only)
+
+  Both take   { "message": "..." }   and return
+  { "status": "success", "reply": "...", "agent": "..." }.
+  =================================================================
+-->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.3.0/css/all.min.css">
+
+<style>
+/* =================================================================
+   TOKENS — Emerald / Jade primary, jewel-tone agent identities
+================================================================= */
+:root{
+  --void:#04101c;
+  --bg-deep:#081a2e;
+  --panel-bg:linear-gradient(160deg, rgba(6,20,15,.95), rgba(3,10,7,.97));
+  --glass-bg:linear-gradient(160deg, rgba(255,255,255,.055), rgba(255,255,255,.008));
+  --glass-border:rgba(0,240,255,.18);
+
+  --jade:#00f0ff;
+  --jade-hot:#cdeeff;
+  --emerald:#0099ff;
+  --sapphire:#2f8fe0;
+  --citrine:#f0c419;
+  --amethyst:#9b6fe0;
+  --orchid:#06b6d4;
+  --moss:#38bdf8;
+  --turquoise:#0ea5e9;
+  --amber:#fbbf24;
+  --danger:#f43f5e;
+
+  --text-hi:#eaf6ff;
+  --text-mid:#8fb0c4;
+  --text-low:#4a6a82;
+
+  --font-display:'Orbitron', sans-serif;
+  --font-body:'Rajdhani', 'Segoe UI', sans-serif;
+  --font-mono:'Share Tech Mono', 'Courier New', monospace;
+
+  --ease-out:cubic-bezier(.16,1,.3,1);
+}
+
+/* =================================================================
+   RESET / BASE
+================================================================= */
+*{ margin:0; padding:0; box-sizing:border-box; }
+html,body{ height:100%; background:var(--void); }
+body{
+  font-family:var(--font-body);
+  color:var(--text-hi);
+  overflow:hidden;
+  position:relative;
+  -webkit-font-smoothing:antialiased;
+}
+button{ font-family:inherit; }
+::selection{ background:rgba(0,240,255,.28); color:#fff; }
+::-webkit-scrollbar{ width:6px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:rgba(0,240,255,.25); border-radius:4px; }
+
+:focus-visible{ outline:2px solid var(--jade); outline-offset:3px; border-radius:4px; }
+
+/* =================================================================
+   BACKGROUND LAYERS (static textures — motion budget spent on the core)
+================================================================= */
+.bg-void{
+  position:fixed; inset:0; z-index:0;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 40%, rgba(0,240,255,.09), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 85% 80%, rgba(20,224,192,.05), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 10% 85%, rgba(240,196,25,.035), transparent 60%),
+    linear-gradient(180deg, var(--void), var(--bg-deep) 55%, var(--void));
+}
+.bg-grid{
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(0,240,255,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,240,255,.045) 1px, transparent 1px);
+  background-size:46px 46px;
+  mask-image:radial-gradient(ellipse 75% 65% at 50% 46%, #000 30%, transparent 78%);
+  -webkit-mask-image:radial-gradient(ellipse 75% 65% at 50% 46%, #000 30%, transparent 78%);
+}
+.bg-particles{ position:fixed; inset:0; z-index:1; pointer-events:none; overflow:hidden; }
+.bg-particle{
+  position:absolute; bottom:-10px; width:2px; height:2px;
+  background:var(--jade); border-radius:50%; opacity:0; filter:blur(.4px);
+  animation:drift linear infinite;
+}
+@keyframes drift{
+  0%{ transform:translateY(0); opacity:0; }
+  8%{ opacity:.55; }
+  92%{ opacity:.2; }
+  100%{ transform:translate(var(--drift,0px), -108vh); opacity:0; }
+}
+.vignette{
+  position:fixed; inset:0; z-index:4; pointer-events:none;
+  background:radial-gradient(ellipse at 50% 48%, transparent 38%, rgba(1,6,4,.62) 100%);
+}
+.scanline-overlay{
+  position:fixed; inset:0; z-index:5; pointer-events:none; opacity:.5;
+  background:repeating-linear-gradient(to bottom, rgba(255,255,255,.02) 0px, rgba(255,255,255,.02) 1px, transparent 1px, transparent 3px);
+  mix-blend-mode:overlay;
+}
+
+/* =================================================================
+   HUD CHROME — screen corners + core-viewport tracking frame
+================================================================= */
+.hud-corner{ position:fixed; width:38px; height:38px; z-index:6; pointer-events:none; border:1.5px solid rgba(0,240,255,.3); }
+.hud-corner.tl{ top:14px; left:14px; border-right:none; border-bottom:none; }
+.hud-corner.tr{ top:14px; right:14px; border-left:none; border-bottom:none; }
+.hud-corner.bl{ bottom:14px; left:14px; border-right:none; border-top:none; }
+.hud-corner.br{ bottom:14px; right:14px; border-left:none; border-top:none; }
+@media (max-width:900px){ .hud-corner{ display:none; } }
+
+.core-frame{ position:absolute; inset:14% 20%; pointer-events:none; z-index:3; }
+.core-bracket{ position:absolute; width:24px; height:24px; border:1.5px solid rgba(0,240,255,.4); }
+.core-bracket.tl{ top:0; left:0; border-right:none; border-bottom:none; }
+.core-bracket.tr{ top:0; right:0; border-left:none; border-bottom:none; }
+.core-bracket.bl{ bottom:0; left:0; border-right:none; border-top:none; }
+.core-bracket.br{ bottom:0; right:0; border-left:none; border-top:none; }
+
+.hud-topbar{
+  position:fixed; top:0; left:0; right:0; z-index:10;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:22px 34px;
+}
+.hud-brand{ display:flex; align-items:center; gap:11px; }
+.hud-brand-mark{
+  width:30px; height:30px; display:grid; place-items:center;
+  border:1px solid rgba(0,240,255,.4); border-radius:8px;
+  color:var(--jade); font-size:13px;
+  box-shadow:0 0 14px rgba(0,240,255,.25) inset, 0 0 10px rgba(0,240,255,.2);
+}
+.hud-brand-text{
+  font-family:var(--font-display); font-weight:700; font-size:.92rem;
+  letter-spacing:.16em; color:var(--text-hi);
+}
+.hud-brand-text em{ color:var(--jade); font-style:normal; opacity:.75; margin:0 2px; }
+
+.hud-status-cluster{ display:flex; align-items:center; gap:22px; }
+.hud-clock{ font-family:var(--font-mono); font-size:.82rem; letter-spacing:.1em; color:var(--text-mid); }
+.dot{ display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--emerald); }
+.dot.pulse{ animation:dotpulse 2.2s ease-in-out infinite; }
+@keyframes dotpulse{
+  0%,100%{ box-shadow:0 0 0 0 rgba(0,153,255,.5); }
+  50%{ box-shadow:0 0 0 5px rgba(0,153,255,0); }
+}
+.hud-mode-badge, .hud-system-status{
+  display:flex; align-items:center; gap:7px;
+  font-family:var(--font-mono); font-size:.68rem; letter-spacing:.14em;
+  padding:6px 12px; border-radius:20px; border:1px solid rgba(0,240,255,.18);
+  background:rgba(255,255,255,.03);
+}
+.hud-mode-badge.live .dot{ background:var(--emerald); }
+.hud-mode-badge.demo .dot{ background:var(--amber); }
+.hud-system-status .dot{ background:var(--emerald); }
+
+@media (max-width:900px){
+  .hud-topbar{ padding:16px 18px; }
+  .hud-brand-text{ font-size:.72rem; }
+  .hud-status-cluster{ gap:10px; }
+  .hud-clock{ display:none; }
+  .hud-system-status{ display:none; }
+}
+
+/* =================================================================
+   STAGE / SYNAPSE VISUAL
+================================================================= */
+.stage{ position:relative; height:100vh; z-index:2; }
+.synapse-visual{ position:absolute; inset:0; }
+#synapseCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+.synapse-fallback{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:180px; height:180px; border-radius:50%; display:none;
+  background:radial-gradient(circle, rgba(0,240,255,.35), rgba(0,240,255,.05) 60%, transparent 72%);
+  box-shadow:0 0 90px rgba(0,240,255,.35);
+  animation:fallbackpulse 3.2s ease-in-out infinite;
+}
+.synapse-fallback.show{ display:block; }
+@keyframes fallbackpulse{ 0%,100%{ transform:translate(-50%,-50%) scale(1); } 50%{ transform:translate(-50%,-50%) scale(1.08); } }
+
+.synapse-label{
+  position:absolute; left:50%; bottom:15%; transform:translateX(-50%);
+  text-align:center; pointer-events:none;
+}
+.synapse-label-tag{
+  display:block; font-family:var(--font-display); font-size:.64rem;
+  letter-spacing:.32em; color:var(--text-mid); text-indent:.32em;
+}
+.synapse-label-tag em{ color:var(--jade); font-style:normal; opacity:.85; }
+.synapse-label-sub{
+  display:block; margin-top:7px; font-family:var(--font-mono); font-size:.72rem;
+  letter-spacing:.16em; color:var(--jade); opacity:.9; transition:color .4s;
+}
+.cyborg-engage{
+  all:unset; box-sizing:border-box; cursor:pointer; pointer-events:auto; z-index:6;
+  position:absolute; left:50%; bottom:112px; transform:translateX(-50%);
+  display:inline-flex; align-items:center; gap:8px; white-space:nowrap;
+  padding:8px 18px; border-radius:20px; border:1px solid rgba(0,240,255,.32);
+  background:rgba(255,255,255,.03); backdrop-filter:blur(8px);
+  font-family:var(--font-mono); font-size:.64rem; letter-spacing:.16em; color:var(--jade);
+  transition:background .25s, box-shadow .25s, transform .25s;
+}
+.cyborg-engage:hover{ background:rgba(0,240,255,.12); box-shadow:0 0 22px rgba(0,240,255,.3); transform:translateX(-50%) translateY(-2px); }
+.cyborg-engage.active{ background:rgba(0,240,255,.16); box-shadow:0 0 24px rgba(0,240,255,.4); border-color:var(--jade); }
+@media (max-width:900px){ .cyborg-engage{ bottom:14px; font-size:.6rem; padding:7px 14px; } }
+
+.hud-stats-strip{
+  position:fixed; left:0; right:0; bottom:32px; z-index:10; height:30px;
+  display:flex; align-items:center; justify-content:center; gap:34px;
+  background:linear-gradient(180deg, transparent, rgba(2,10,7,.72));
+  border-top:1px solid rgba(0,240,255,.08);
+}
+.stat-item{ display:flex; align-items:baseline; gap:6px; font-family:var(--font-mono); white-space:nowrap; }
+.stat-value{ font-size:.74rem; color:var(--jade); letter-spacing:.04em; }
+.stat-label{ font-size:.6rem; color:var(--text-low); letter-spacing:.14em; }
+@media (max-width:900px){ .hud-stats-strip{ gap:16px; } .stat-label{ display:none; } }
+@media (max-width:480px){ .hud-stats-strip{ gap:9px; } .stat-value{ font-size:.66rem; } }
+
+/* =================================================================
+   AGENT ORBIT
+================================================================= */
+.agent-orbit{ position:absolute; inset:0; --total:7; }
+.agent-node{
+  all:unset;
+  position:absolute; top:50%; left:50%; box-sizing:border-box;
+  --angle:calc((var(--i) * (360deg / var(--total))) + 25.7deg);
+  --radius:min(36vw, 310px);
+  transform:translate(-50%,-50%) rotate(var(--angle)) translateX(var(--radius)) rotate(calc(-1 * var(--angle)));
+  width:104px; padding:14px 10px 12px; text-align:center; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  border-radius:16px;
+  background:var(--glass-bg);
+  border:1px solid var(--glass-border);
+  backdrop-filter:blur(14px) saturate(140%);
+  -webkit-backdrop-filter:blur(14px) saturate(140%);
+  box-shadow:0 10px 30px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.02) inset;
+  transition:transform .4s var(--ease-out), box-shadow .4s, border-color .4s, opacity .3s, filter .3s;
+}
+.agent-node:hover{
+  transform:translate(-50%,-50%) rotate(var(--angle)) translateX(var(--radius)) rotate(calc(-1 * var(--angle))) scale(1.07);
+  border-color:var(--accent, var(--jade));
+  box-shadow:0 14px 34px rgba(0,0,0,.5), 0 0 22px var(--accent-glow, rgba(0,240,255,.35));
+}
+.agent-node.active{
+  border-color:var(--accent, var(--jade));
+  box-shadow:0 14px 34px rgba(0,0,0,.5), 0 0 28px var(--accent-glow, rgba(0,240,255,.45));
+  background:linear-gradient(160deg, rgba(255,255,255,.09), rgba(255,255,255,.015));
+}
+.agent-node.is-offline{ opacity:.5; filter:grayscale(.5); }
+.agent-node.is-warning{ box-shadow:0 0 0 1px rgba(251,146,60,.45) inset, 0 10px 30px rgba(0,0,0,.4); }
+
+.agent-node-icon{
+  width:38px; height:38px; display:grid; place-items:center; border-radius:50%;
+  font-size:1rem; color:var(--accent, var(--jade));
+  background:radial-gradient(circle, var(--accent-glow, rgba(0,240,255,.18)), transparent 70%);
+  border:1px solid var(--accent-glow, rgba(0,240,255,.3));
+}
+.agent-node-name{ font-family:var(--font-display); font-size:.6rem; letter-spacing:.13em; color:var(--text-hi); }
+.agent-node-role{ font-family:var(--font-mono); font-size:.5rem; letter-spacing:.14em; color:var(--text-low); }
+.agent-node-status{ display:flex; align-items:center; justify-content:center; margin-top:1px; }
+.agent-node-status .dot{ width:6px; height:6px; }
+
+@media (max-width:900px){
+  .stage{ height:auto; display:flex; flex-direction:column; overflow-x:hidden; }
+  body{ overflow-y:auto; overflow-x:hidden; }
+  .synapse-visual{ position:relative; inset:auto; height:50vh; min-height:360px; }
+  .agent-orbit{
+    position:relative; inset:auto; display:grid;
+    grid-template-columns:repeat(3, 1fr); gap:12px;
+    padding:6px 16px 150px;
+  }
+  .agent-node{
+    position:relative !important; top:auto !important; left:auto !important;
+    transform:none !important; width:auto;
+  }
+  .agent-node:hover{ transform:translateY(-3px) !important; }
+}
+@media (max-width:480px){
+  .agent-orbit{ grid-template-columns:repeat(2, 1fr); }
+  .agent-node-name{ font-size:.58rem; }
+}
+
+/* =================================================================
+   TICKER
+================================================================= */
+.hud-ticker{
+  position:fixed; left:0; right:0; bottom:0; z-index:10; height:32px;
+  display:flex; align-items:center;
+  background:linear-gradient(180deg, transparent, rgba(2,8,6,.9));
+  border-top:1px solid rgba(0,240,255,.1);
+  overflow:hidden;
+}
+.hud-ticker-track{
+  display:inline-flex; white-space:nowrap; padding-left:100%;
+  font-family:var(--font-mono); font-size:.68rem; letter-spacing:.08em; color:var(--text-mid);
+  animation:ticker-scroll 34s linear infinite;
+}
+@keyframes ticker-scroll{ to{ transform:translateX(-100%); } }
+
+/* =================================================================
+   AGENT FOCUS PANEL
+================================================================= */
+.panel-backdrop{
+  position:fixed; inset:0; z-index:40; opacity:0; pointer-events:none;
+  background:rgba(1,6,4,.5); backdrop-filter:blur(2px); transition:opacity .4s;
+}
+.panel-backdrop.open{ opacity:1; pointer-events:auto; }
+
+.agent-panel{
+  --accent:var(--jade); --accent-glow:rgba(0,240,255,.25);
+  position:fixed; top:0; right:0; height:100%; z-index:50;
+  width:min(430px, 92vw); padding:26px 24px 20px;
+  background:var(--panel-bg);
+  backdrop-filter:blur(26px) saturate(130%);
+  -webkit-backdrop-filter:blur(26px) saturate(130%);
+  border-left:1px solid rgba(0,240,255,.16);
+  box-shadow:-24px 0 60px rgba(0,0,0,.6), 0 0 46px var(--accent-glow) inset;
+  transform:translateX(105%);
+  transition:transform .55s var(--ease-out);
+  overflow-y:auto;
+}
+.agent-panel.open{ transform:translateX(0); }
+
+.panel-close{
+  all:unset; position:absolute; top:18px; right:18px; cursor:pointer;
+  width:30px; height:30px; display:grid; place-items:center; border-radius:50%;
+  color:var(--text-mid); border:1px solid rgba(255,255,255,.1);
+  transition:color .25s, border-color .25s, transform .25s;
+}
+.panel-close:hover{ color:var(--text-hi); border-color:var(--accent); transform:rotate(90deg); }
+
+.panel-header{ display:flex; align-items:center; gap:14px; padding-right:34px; margin-bottom:18px; }
+.panel-icon{
+  width:48px; height:48px; border-radius:50%; display:grid; place-items:center;
+  font-size:1.2rem; color:var(--accent);
+  background:radial-gradient(circle, var(--accent-glow), transparent 70%);
+  border:1px solid var(--accent-glow);
+  flex-shrink:0;
+}
+.panel-title{ font-family:var(--font-display); font-size:1.05rem; letter-spacing:.1em; color:var(--text-hi); }
+.panel-status{
+  margin-top:5px; display:flex; align-items:center; gap:6px;
+  font-family:var(--font-mono); font-size:.68rem; letter-spacing:.12em; color:var(--text-mid);
+}
+
+.panel-terminal{
+  padding:14px 14px; margin-bottom:16px; min-height:52px;
+  background:rgba(0,0,0,.35); border:1px solid rgba(0,240,255,.12); border-radius:10px;
+}
+.terminal-eyebrow{
+  display:flex; align-items:center; gap:8px; margin-bottom:8px;
+  font-family:var(--font-mono); font-size:.6rem; letter-spacing:.22em; color:var(--text-low);
+}
+.terminal-eyebrow .dot{ background:var(--accent, var(--jade)); }
+.terminal-wave{ display:inline-flex; align-items:flex-end; gap:2px; height:11px; margin-left:2px; }
+.terminal-wave span{ width:2px; background:var(--accent, var(--jade)); height:3px; border-radius:1px; opacity:.4; }
+.panel-terminal.speaking .terminal-wave span{ animation:wavebar 1s ease-in-out infinite; opacity:1; }
+.panel-terminal.speaking .terminal-wave span:nth-child(1){ animation-delay:0s; }
+.panel-terminal.speaking .terminal-wave span:nth-child(2){ animation-delay:.12s; }
+.panel-terminal.speaking .terminal-wave span:nth-child(3){ animation-delay:.24s; }
+.panel-terminal.speaking .terminal-wave span:nth-child(4){ animation-delay:.36s; }
+.panel-terminal.speaking .terminal-wave span:nth-child(5){ animation-delay:.48s; }
+@keyframes wavebar{ 0%,100%{ height:3px; } 50%{ height:11px; } }
+.typewriter-line{ font-family:var(--font-mono); font-size:.82rem; line-height:1.6; color:var(--jade); }
+.typewriter-line::after{
+  content:'▋'; margin-left:2px; color:var(--accent); animation:blink 1s step-end infinite;
+}
+@keyframes blink{ 50%{ opacity:0; } }
+
+.panel-chat{ display:flex; gap:8px; margin-bottom:18px; }
+.panel-chat-input{
+  flex:1; min-width:0; background:rgba(0,0,0,.32); border:1px solid rgba(0,240,255,.18); border-radius:8px;
+  padding:10px 12px; color:var(--text-hi); font-family:var(--font-body); font-size:.85rem;
+}
+.panel-chat-input::placeholder{ color:var(--text-low); }
+.panel-chat-input:focus{ outline:none; border-color:var(--accent, var(--jade)); }
+.panel-chat-input:disabled{ opacity:.5; }
+.panel-chat-send{
+  all:unset; box-sizing:border-box; cursor:pointer; width:40px; height:40px; flex-shrink:0;
+  display:grid; place-items:center; border-radius:8px;
+  background:rgba(0,240,255,.12); color:var(--accent, var(--jade)); border:1px solid rgba(0,240,255,.25);
+  transition:background .2s;
+}
+.panel-chat-send:hover{ background:rgba(0,240,255,.22); }
+.panel-chat-send:disabled{ opacity:.5; cursor:default; }
+
+.panel-data{ display:flex; flex-direction:column; gap:1px; margin-bottom:16px; border-radius:10px; overflow:hidden; }
+.panel-row{
+  display:flex; align-items:baseline; justify-content:space-between; gap:14px;
+  padding:9px 12px; background:rgba(255,255,255,.025);
+  font-size:.86rem;
+}
+.panel-row:nth-child(odd){ background:rgba(255,255,255,.045); }
+.panel-row-label{ font-family:var(--font-mono); font-size:.68rem; letter-spacing:.1em; color:var(--text-mid); text-transform:uppercase; white-space:nowrap; }
+.panel-row-value{ color:var(--text-hi); text-align:right; font-weight:500; }
+
+.panel-log-title{
+  font-family:var(--font-mono); font-size:.66rem; letter-spacing:.2em; color:var(--text-low);
+  margin-bottom:8px;
+}
+.panel-log-row{
+  display:flex; align-items:flex-start; gap:8px;
+  font-size:.82rem; color:var(--text-mid); padding:6px 2px; line-height:1.5;
+}
+.panel-log-row i{ color:var(--accent); font-size:.65rem; margin-top:5px; flex-shrink:0; }
+
+@media (max-width:480px){ .agent-panel{ padding:22px 18px 18px; } }
+
+/* =================================================================
+   ACCESSIBILITY
+================================================================= */
+@media (prefers-reduced-motion:reduce){
+  .bg-particle, .hud-ticker-track, .dot.pulse, .synapse-fallback, .terminal-wave span{ animation:none !important; }
+  .agent-node, .agent-panel, .panel-backdrop, .panel-close{ transition-duration:.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="bg-void"></div>
+<div class="bg-grid"></div>
+<div class="bg-particles" id="bgParticles"></div>
+<div class="vignette"></div>
+<div class="scanline-overlay"></div>
+
+<div class="hud-corner tl"></div>
+<div class="hud-corner tr"></div>
+<div class="hud-corner bl"></div>
+<div class="hud-corner br"></div>
+
+<header class="hud-topbar">
+  <div class="hud-brand">
+    <span class="hud-brand-mark">⬡</span>
+    <span class="hud-brand-text">OCEAN 8<em>//</em>AURA</span>
+  </div>
+  <div class="hud-status-cluster">
+    <div class="hud-clock" id="hudClock">00:00:00</div>
+    <div class="hud-mode-badge" id="modeBadge"><span class="dot"></span>CONNECTING</div>
+    <div class="hud-system-status"><span class="dot pulse"></span>SYSTEM OPERATIONAL</div>
+  </div>
+</header>
+
+<main class="stage">
+  <div class="synapse-visual">
+    <canvas id="synapseCanvas"></canvas>
+    <div class="synapse-fallback" id="synapseFallback"></div>
+    <div class="core-frame">
+      <span class="core-bracket tl"></span>
+      <span class="core-bracket tr"></span>
+      <span class="core-bracket bl"></span>
+      <span class="core-bracket br"></span>
+    </div>
+    <div class="synapse-label">
+      <span class="synapse-label-tag">⟡ SYNAPSE CORE <em>· AURA-9</em></span>
+      <span class="synapse-label-sub" id="synapseSub">AWAITING INPUT</span>
+    </div>
+    <button type="button" class="cyborg-engage" id="cyborgEngage"><i class="fa-solid fa-brain"></i> ENGAGE CYBORG</button>
+  </div>
+  <nav class="agent-orbit" id="agentOrbit" aria-label="Agent selection"></nav>
+</main>
+
+<div class="hud-stats-strip" id="statsStrip">
+  <div class="stat-item"><span class="stat-value" id="statOnline">—</span><span class="stat-label">AGENTS ONLINE</span></div>
+  <div class="stat-item"><span class="stat-value" id="statLatency">—</span><span class="stat-label">AVG LATENCY</span></div>
+  <div class="stat-item"><span class="stat-value" id="statLoad">—</span><span class="stat-label">AVG LOAD</span></div>
+  <div class="stat-item"><span class="stat-value" id="statConfidence">—</span><span class="stat-label">CONFIDENCE</span></div>
+</div>
+
+<div class="hud-ticker">
+  <div class="hud-ticker-track" id="tickerTrack">INITIALIZING AGENT TELEMETRY&nbsp;&nbsp;&nbsp;///</div>
+</div>
+
+<div class="panel-backdrop" id="panelBackdrop"></div>
+<aside class="agent-panel" id="agentPanel" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Agent detail panel" inert>
+  <button type="button" class="panel-close" id="panelClose" aria-label="Close panel"><i class="fa-solid fa-xmark"></i></button>
+  <div class="panel-header">
+    <div class="panel-icon" id="panelIcon"><i class="fa-solid fa-circle-notch"></i></div>
+    <div>
+      <div class="panel-title" id="panelTitle">AGENT</div>
+      <div class="panel-status" id="panelStatus"><span class="dot"></span>—</div>
+    </div>
+  </div>
+  <div class="panel-terminal" id="panelTerminal">
+    <div class="terminal-eyebrow">
+      <span class="dot pulse"></span><span>SPEAKING</span>
+      <span class="terminal-wave"><span></span><span></span><span></span><span></span><span></span></span>
+    </div>
+    <p class="typewriter-line" id="typewriterLine"></p>
+  </div>
+  <div class="panel-chat" id="panelChat">
+    <input type="text" id="panelChatInput" class="panel-chat-input" placeholder="Send a command..." autocomplete="off" maxlength="300">
+    <button type="button" id="panelChatSend" class="panel-chat-send" aria-label="Send message"><i class="fa-solid fa-paper-plane"></i></button>
+  </div>
+  <div class="panel-data" id="panelData"></div>
+  <div class="panel-log" id="panelLog"></div>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha512-dLxUelApnYxpLt6K2iomGngnHO83iUvZytA3YjDUCjT0HDOHKXnVYdf3hU4JjM8uEhxf9nD1/ey98U3t2vZ0qQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+'use strict';
+
+/* =================================================================
+   CONFIG
+================================================================= */
+var API_ENDPOINT = '/api/report';
+var POLL_INTERVAL_MS = 20000;
+
+var AGENTS = [
+  { id:'ikigai',  name:'IKIGAI',  role:'PURPOSE',  icon:'fa-yin-yang',      color:'#00f0ff' },
+  { id:'wolf',    name:'WOLF',    role:'SCOUT',    icon:'fa-paw',           color:'#38bdf8' },
+  { id:'mercury', name:'MERCURY', role:'RELAY',    icon:'fa-bolt',          color:'#0ea5e9' },
+  { id:'saul',    name:'SAUL',    role:'COUNSEL',  icon:'fa-gavel',         color:'#2f8fe0' },
+  { id:'scrooge', name:'SCROOGE', role:'LEDGER',   icon:'fa-sack-dollar',   color:'#f0c419' },
+  { id:'shield',  name:'SHIELD',  role:'SENTINEL', icon:'fa-shield-halved', color:'#9b6fe0' },
+  { id:'spider',  name:'SPIDER',  role:'CRAWLER',  icon:'fa-spider',       color:'#06b6d4' }
+];
+
+/* The Cyborg itself — the central Synapse core, reachable via the ENGAGE
+   CYBORG button rather than an orbit widget. Uses the same panel/chat UI. */
+var CYBORG = { id:'cyborg', name:'CYBORG', role:'ORCHESTRATOR', icon:'fa-brain', color:'#00f0ff' };
+
+var STATUS_META = {
+  online:  { color:'#0099ff', label:'ONLINE'  },
+  standby: { color:'#fbbf24', label:'STANDBY' },
+  warning: { color:'#fb923c', label:'WARNING' },
+  offline: { color:'#f43f5e', label:'OFFLINE' }
+};
+
+var KNOWN_FIELDS  = ['role','uptime','latency','load','lastAction'];
+var FIELD_LABELS  = { role:'Role', uptime:'Uptime', latency:'Latency', load:'Load', lastAction:'Last Action' };
+var EXCLUDE_ROWS  = ['status','log','logs','history','name'];
+
+/* Placeholder telemetry shown until /api/report responds (or if it never does). */
+var DEMO_DATA = {
+  cyborg:{ status:'online', role:'Central Orchestrator & Synapse Core',
+    lastAction:'Central orchestrator — coordinating all connected agents.', log:[] },
+  ikigai:{ status:'online', role:'Purpose & Strategic Alignment Engine', uptime:'99.98%', latency:'11ms', load:'32%',
+    lastAction:'Realigned quarterly objective vectors',
+    log:['Directive sync complete','Alignment score 96.4','No anomalies detected'] },
+  wolf:{ status:'online', role:'Market Opportunity Scanner', uptime:'99.91%', latency:'18ms', load:'54%',
+    lastAction:'Flagged 3 emerging GTA wellness leads',
+    log:['Scan cycle 214 complete','3 new leads scored above threshold','Competitor pricing delta logged'] },
+  mercury:{ status:'online', role:'Communications & Messaging Relay', uptime:'100%', latency:'4ms', load:'21%',
+    lastAction:'Dispatched client follow-up sequence',
+    log:['Outbound queue cleared','0 failed deliveries','Response latency nominal'] },
+  saul:{ status:'standby', role:'Compliance & Legal Counsel', uptime:'99.87%', latency:'27ms', load:'9%',
+    lastAction:'Reviewed advertising copy for regulatory compliance',
+    log:['Awaiting new intake','Last audit: passed','Standing by for review requests'] },
+  scrooge:{ status:'online', role:'Financial Ledger & Budget Controller', uptime:'99.95%', latency:'14ms', load:'41%',
+    lastAction:'Reconciled Q3 marketing spend',
+    log:['Ledger balanced','Burn rate within forecast','Invoice batch approved'] },
+  shield:{ status:'online', role:'Security & Access Sentinel', uptime:'100%', latency:'6ms', load:'17%',
+    lastAction:'Rotated API credentials',
+    log:['0 intrusion attempts','Firewall rules current','Last credential rotation: today'] },
+  spider:{ status:'warning', role:'Web & Data Crawler', uptime:'98.42%', latency:'63ms', load:'78%',
+    lastAction:'Indexed competitor directory listings',
+    log:['Rate-limited by 1 target host','Retry scheduled','Data cache 84% fresh'] }
+};
+
+/* =================================================================
+   UTILITIES
+================================================================= */
+function hexToRgba(hex, a){
+  var v = hex.replace('#','');
+  var r = parseInt(v.substring(0,2),16), g = parseInt(v.substring(2,4),16), b = parseInt(v.substring(4,6),16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+function formatKey(k){
+  return k.replace(/([A-Z])/g,' $1').replace(/[_-]/g,' ').replace(/^./, function(s){ return s.toUpperCase(); }).trim();
+}
+function formatValue(v){
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'object') { try { return JSON.stringify(v); } catch(e){ return String(v); } }
+  return String(v);
+}
+function typeText(el, text, speed){
+  speed = speed || 20;
+  return new Promise(function(resolve){
+    el.textContent = '';
+    var i = 0;
+    (function tick(){
+      if (i <= text.length){ el.textContent = text.slice(0, i); i++; setTimeout(tick, speed); }
+      else resolve();
+    })();
+  });
+}
+function prefersReducedMotion(){
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/* =================================================================
+   SYNAPSE ENGINE  (Three.js r128 — plain WebGL, no postprocessing deps)
+   Dot-matrix node sphere + synapse lines + energy pulses (Jarvis ref),
+   plus orbit rings, specular glint, galaxy dust and a reaction burst
+   (Fable ref) — all rendered in the cyan / electric-blue family.
+================================================================= */
+var SynapseEngine = (function(){
+  var scene, camera, renderer, clock, canvas;
+  var group, core, glowOuter, glowMid, glowInner, hotPoint, points, lines, pulses, dust, burst, specular;
+  var flashAge = 999;
+  var nodePositions = [], edgesData = [];
+  var mouseTarget = { x:0, y:0 };
+  var baseColor, reactionColor, currentColor;
+  var reacting = false;
+  var energy = 0, targetEnergy = 0;
+  var running = false;
+  var motionScale = prefersReducedMotion() ? 0.18 : 1;
+  var ready = false;
+  var burstAge = 999, BURST_DURATION = 0.9;
+
+  function fibonacciSphere(count, radius){
+    var pts = [];
+    var phi = Math.PI * (3 - Math.sqrt(5));
+    for (var i = 0; i < count; i++){
+      var y = 1 - (i / (count - 1)) * 2;
+      var r = Math.sqrt(Math.max(0, 1 - y * y));
+      var theta = phi * i;
+      var x = Math.cos(theta) * r;
+      var z = Math.sin(theta) * r;
+      pts.push(new THREE.Vector3(x * radius, y * radius, z * radius));
+    }
+    return pts;
+  }
+
+  function buildEdges(positions, kNearest){
+    var edges = [];
+    var seen = {};
+    for (var i = 0; i < positions.length; i++){
+      var dists = [];
+      for (var j = 0; j < positions.length; j++){
+        if (i === j) continue;
+        dists.push({ j:j, d:positions[i].distanceTo(positions[j]) });
+      }
+      dists.sort(function(a,b){ return a.d - b.d; });
+      for (var k = 0; k < kNearest && k < dists.length; k++){
+        var a = i, b = dists[k].j;
+        var key = a < b ? (a + '-' + b) : (b + '-' + a);
+        if (!seen[key]){ seen[key] = true; edges.push({ a:a, b:b }); }
+      }
+    }
+    return edges;
+  }
+
+  function createSharpGlowTexture(){
+    var size = 128;
+    var cnv = document.createElement('canvas');
+    cnv.width = cnv.height = size;
+    var ctx = cnv.getContext('2d');
+    var g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.18, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.42, 'rgba(255,255,255,0.22)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(cnv);
+  }
+  function createSoftGlowTexture(){
+    var size = 128;
+    var cnv = document.createElement('canvas');
+    cnv.width = cnv.height = size;
+    var ctx = cnv.getContext('2d');
+    var g = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+    g.addColorStop(0, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.35, 'rgba(255,255,255,0.35)');
+    g.addColorStop(0.7, 'rgba(255,255,255,0.08)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    return new THREE.CanvasTexture(cnv);
+  }
+
+  function buildPoints(positions, radius, tex){
+    var geo = new THREE.BufferGeometry();
+    var posArr = new Float32Array(positions.length * 3);
+    var colArr = new Float32Array(positions.length * 3);
+    var cA = new THREE.Color(0xd6f0ff), cB = new THREE.Color(0x0077e6);
+    positions.forEach(function(p, i){
+      posArr[i*3] = p.x; posArr[i*3+1] = p.y; posArr[i*3+2] = p.z;
+      var t = (p.y / radius + 1) / 2;
+      var c = cA.clone().lerp(cB, t);
+      colArr[i*3] = c.r; colArr[i*3+1] = c.g; colArr[i*3+2] = c.b;
+    });
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+    var mat = new THREE.PointsMaterial({
+      size:.38, map:tex, transparent:true, depthWrite:false,
+      blending:THREE.AdditiveBlending, vertexColors:true, sizeAttenuation:true
+    });
+    return new THREE.Points(geo, mat);
+  }
+
+  function buildLines(positions, edges){
+    var geo = new THREE.BufferGeometry();
+    var posArr = new Float32Array(edges.length * 2 * 3);
+    edges.forEach(function(e, i){
+      var a = positions[e.a], b = positions[e.b];
+      posArr[i*6]=a.x; posArr[i*6+1]=a.y; posArr[i*6+2]=a.z;
+      posArr[i*6+3]=b.x; posArr[i*6+4]=b.y; posArr[i*6+5]=b.z;
+    });
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    var mat = new THREE.LineBasicMaterial({
+      color:0x1fa8e0, transparent:true, opacity:.16,
+      blending:THREE.AdditiveBlending, depthWrite:false
+    });
+    return new THREE.LineSegments(geo, mat);
+  }
+
+  function spawnPulse(edges, initial){
+    var e = edges[Math.floor(Math.random() * edges.length)];
+    return { edge:e, t: initial ? Math.random() : 0, speed: 0.15 + Math.random()*0.3 };
+  }
+  function buildPulses(count, edges, tex){
+    var geo = new THREE.BufferGeometry();
+    var posArr = new Float32Array(count * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    if (geo.attributes.position.setUsage) geo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+    var mat = new THREE.PointsMaterial({
+      size:.5, map:tex, color:0x6de0ff, transparent:true,
+      depthWrite:false, blending:THREE.AdditiveBlending
+    });
+    var mesh = new THREE.Points(geo, mat);
+    mesh.userData.state = [];
+    for (var i = 0; i < count; i++) mesh.userData.state.push(spawnPulse(edges, true));
+    return mesh;
+  }
+
+  function buildCore(tex){
+    var coreGeo = new THREE.IcosahedronGeometry(1.5, 1);
+    var coreMat = new THREE.MeshBasicMaterial({ color:0x00f0ff, wireframe:true, transparent:true, opacity:.68 });
+    var coreMesh = new THREE.Mesh(coreGeo, coreMat);
+
+    /* Nested additive glow shells give a smooth hot-center-to-colored-edge falloff
+       instead of a single flat wash — this is what actually reads as "luminous". */
+    var glowOuterGeo = new THREE.SphereGeometry(2.7, 32, 32);
+    var glowOuterMat = new THREE.MeshBasicMaterial({ color:0x00f0ff, transparent:true, opacity:.055, blending:THREE.AdditiveBlending, depthWrite:false });
+    var glowOuter = new THREE.Mesh(glowOuterGeo, glowOuterMat);
+
+    var glowMidGeo = new THREE.SphereGeometry(1.95, 32, 32);
+    var glowMidMat = new THREE.MeshBasicMaterial({ color:0x39c9ff, transparent:true, opacity:.13, blending:THREE.AdditiveBlending, depthWrite:false });
+    var glowMid = new THREE.Mesh(glowMidGeo, glowMidMat);
+
+    var glowInnerGeo = new THREE.SphereGeometry(1.1, 24, 24);
+    var glowInnerMat = new THREE.MeshBasicMaterial({ color:0xd9f4ff, transparent:true, opacity:.3, blending:THREE.AdditiveBlending, depthWrite:false });
+    var glowInner = new THREE.Mesh(glowInnerGeo, glowInnerMat);
+
+    /* The molten "hot point" — a soft sprite, not filled geometry, so it actually glows. */
+    var hotMat = new THREE.SpriteMaterial({ map:tex, color:0xf3fffa, transparent:true, opacity:.95, blending:THREE.AdditiveBlending, depthWrite:false });
+    var hotPoint = new THREE.Sprite(hotMat);
+    hotPoint.scale.set(1.7, 1.7, 1);
+
+    var g = new THREE.Group();
+    g.add(glowOuter, glowMid, coreMesh, glowInner, hotPoint);
+    return { group:g, core:coreMesh, glowOuter:glowOuter, glowMid:glowMid, glowInner:glowInner, hotPoint:hotPoint };
+  }
+
+  function buildOrbitRing(radius, tiltX, tiltZ, colorHex, opacity){
+    var segments = 96;
+    var arr = new Float32Array((segments+1) * 3);
+    for (var i = 0; i <= segments; i++){
+      var a = (i/segments) * Math.PI * 2;
+      arr[i*3]   = Math.cos(a) * radius;
+      arr[i*3+1] = 0;
+      arr[i*3+2] = Math.sin(a) * radius * 0.94;
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    var mat = new THREE.LineBasicMaterial({ color:colorHex, transparent:true, opacity:opacity, blending:THREE.AdditiveBlending, depthWrite:false });
+    var ring = new THREE.Line(geo, mat);
+    ring.rotation.x = tiltX; ring.rotation.z = tiltZ;
+    return ring;
+  }
+
+  function buildGalaxyDust(count, radius, tex){
+    var posArr = new Float32Array(count * 3);
+    for (var i = 0; i < count; i++){
+      var edge = Math.random();
+      var r = radius * (0.55 + edge * 1.15);
+      var theta = Math.random() * Math.PI * 2;
+      var flatten = Math.max(0, 1 - edge);
+      var y = (Math.random() - 0.5) * radius * 0.28 * flatten;
+      posArr[i*3] = Math.cos(theta) * r;
+      posArr[i*3+1] = y;
+      posArr[i*3+2] = Math.sin(theta) * r;
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    var mat = new THREE.PointsMaterial({
+      size:.28, map:tex, color:0x2db8ff, transparent:true, opacity:.45,
+      depthWrite:false, blending:THREE.AdditiveBlending, sizeAttenuation:true
+    });
+    return new THREE.Points(geo, mat);
+  }
+
+  function buildBurst(count, tex){
+    var geo = new THREE.BufferGeometry();
+    var posArr = new Float32Array(count * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    if (geo.attributes.position.setUsage) geo.attributes.position.setUsage(THREE.DynamicDrawUsage);
+    var mat = new THREE.PointsMaterial({
+      size:.75, map:tex, color:0x6de0ff, transparent:true, opacity:0,
+      depthWrite:false, blending:THREE.AdditiveBlending
+    });
+    var mesh = new THREE.Points(geo, mat);
+    mesh.userData.dirs = [];
+    mesh.userData.speeds = [];
+    mesh.visible = false;
+    return mesh;
+  }
+  function triggerBurst(hex){
+    if (!burst) return;
+    var n = burst.geometry.attributes.position.count;
+    var dirs = [], speeds = [];
+    for (var i = 0; i < n; i++){
+      var d = new THREE.Vector3(Math.random()*2-1, Math.random()*2-1, Math.random()*2-1);
+      if (d.lengthSq() < 0.0001) d.set(0,1,0);
+      d.normalize();
+      dirs.push(d);
+      speeds.push(3.5 + Math.random()*5.5);
+    }
+    burst.userData.dirs = dirs;
+    burst.userData.speeds = speeds;
+    burst.material.color.set(hex);
+    burst.visible = true;
+    burstAge = 0;
+    flashAge = 0;
+  }
+  function updateBurst(delta){
+    if (burstAge > BURST_DURATION){ if (burst.visible) burst.visible = false; return; }
+    burstAge += delta;
+    var dirs = burst.userData.dirs, speeds = burst.userData.speeds;
+    var buf = burst.geometry.attributes.position.array;
+    for (var i = 0; i < dirs.length; i++){
+      var k = speeds[i] * burstAge;
+      buf[i*3] = dirs[i].x * k; buf[i*3+1] = dirs[i].y * k; buf[i*3+2] = dirs[i].z * k;
+    }
+    burst.geometry.attributes.position.needsUpdate = true;
+    burst.material.opacity = Math.max(0, 1 - burstAge / BURST_DURATION);
+    if (burstAge > BURST_DURATION) burst.visible = false;
+  }
+
+  function buildSpecular(tex){
+    var mat = new THREE.SpriteMaterial({ map:tex, color:0xffffff, transparent:true, opacity:.85, blending:THREE.AdditiveBlending, depthWrite:false });
+    var sprite = new THREE.Sprite(mat);
+    sprite.scale.set(.85, .85, 1);
+    sprite.position.set(-1.15, 1.25, 2.5);
+    return sprite;
+  }
+
+  function updatePulses(delta){
+    var state = pulses.userData.state;
+    var posAttr = pulses.geometry.attributes.position;
+    var arr = posAttr.array;
+    var speedMul = (1 + energy * 2.5) * motionScale;
+    for (var i = 0; i < state.length; i++){
+      var p = state[i];
+      p.t += p.speed * delta * speedMul;
+      if (p.t >= 1) { var np = spawnPulse(edgesData, false); p.edge = np.edge; p.t = np.t; p.speed = np.speed; }
+      var a = nodePositions[p.edge.a], b = nodePositions[p.edge.b];
+      arr[i*3]   = a.x + (b.x - a.x) * p.t;
+      arr[i*3+1] = a.y + (b.y - a.y) * p.t;
+      arr[i*3+2] = a.z + (b.z - a.z) * p.t;
+    }
+    posAttr.needsUpdate = true;
+  }
+
+  function onResize(){
+    if (!ready) return;
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false);
+  }
+
+  function animate(){
+    if (!running) return;
+    requestAnimationFrame(animate);
+    var delta = Math.min(clock.getDelta(), .1);
+    var t = clock.getElapsedTime();
+
+    energy += (targetEnergy - energy) * Math.min(1, delta * 2.2);
+
+    /* Idle ambient hue stays locked to the cyan/electric-blue family — never drifts toward green. */
+    var hue = 0.545 + Math.sin(t * .15) * .04;
+    baseColor.setHSL(hue, .88, .54);
+    var target = reacting ? reactionColor : baseColor;
+    currentColor.lerp(target, Math.min(1, delta * 2.5));
+
+    group.rotation.y += delta * (0.05 + energy * 0.32) * motionScale;
+    group.rotation.x += (mouseTarget.x - group.rotation.x) * 0.02;
+    group.rotation.z += (mouseTarget.y - group.rotation.z) * 0.02;
+    dust.rotation.y -= delta * 0.035 * motionScale;
+
+    flashAge += delta;
+    var flash = Math.max(0, 1 - flashAge / 0.45); flash = flash * flash;
+
+    var pulseScale = 1 + Math.sin(t * 1.6) * 0.04 + energy * 0.2;
+    core.scale.setScalar(pulseScale);
+    glowOuter.scale.setScalar(pulseScale * (1 + energy * 0.38));
+    glowMid.scale.setScalar(pulseScale * (1 + energy * 0.3 + flash * 0.5));
+    glowInner.scale.setScalar((1 + Math.sin(t * 2.1) * 0.06 + energy * 0.22 + flash * 0.7));
+    hotPoint.scale.setScalar((1.7 + energy * 0.5 + flash * 1.4) * (1 + Math.sin(t * 2.4) * 0.05));
+
+    glowOuter.material.opacity = 0.055 + energy * 0.09;
+    glowMid.material.opacity = 0.13 + energy * 0.16 + flash * 0.22;
+    glowInner.material.opacity = 0.3 + energy * 0.14 + flash * 0.35;
+    hotPoint.material.opacity = Math.min(1, 0.8 + energy * 0.2 + flash * 0.3);
+
+    core.material.color.copy(currentColor);
+    glowOuter.material.color.copy(currentColor);
+    glowMid.material.color.copy(currentColor).lerp(new THREE.Color(0xffffff), 0.2 + flash * 0.4);
+    glowInner.material.color.copy(currentColor).lerp(new THREE.Color(0xffffff), 0.6 + flash * 0.3);
+    hotPoint.material.color.copy(currentColor).lerp(new THREE.Color(0xffffff), 0.78 + flash * 0.22);
+
+    specular.material.opacity = (0.5 + Math.sin(t*1.6)*0.15) * (0.7 + energy*0.3);
+
+    updatePulses(delta);
+    updateBurst(delta);
+    renderer.render(scene, camera);
+  }
+
+  function isWebGLAvailable(){
+    try{
+      var c = document.createElement('canvas');
+      return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl')));
+    }catch(e){ return false; }
+  }
+
+  function init(canvasEl, fallbackEl){
+    canvas = canvasEl;
+    if (typeof THREE === 'undefined' || !isWebGLAvailable()){
+      if (fallbackEl) fallbackEl.classList.add('show');
+      return;
+    }
+    try{
+      var mobile = window.innerWidth < 900;
+      var NODE_COUNT  = mobile ? 70 : 130;
+      var K_NEAREST   = mobile ? 2 : 3;
+      var PULSE_COUNT = mobile ? 22 : 48;
+      var DUST_COUNT  = mobile ? 90 : 220;
+      var BURST_COUNT = mobile ? 34 : 80;
+      var SPHERE_R    = mobile ? 4.6 : 5.2;
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(58, canvas.clientWidth / Math.max(1, canvas.clientHeight), .1, 1000);
+      camera.position.set(0, 0, mobile ? 12 : 13);
+
+      renderer = new THREE.WebGLRenderer({ canvas:canvas, antialias:true, alpha:true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setClearColor(0x000000, 0);
+      renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, false);
+
+      group = new THREE.Group();
+      scene.add(group);
+
+      nodePositions = fibonacciSphere(NODE_COUNT, SPHERE_R);
+      edgesData = buildEdges(nodePositions, K_NEAREST);
+      var sharpTex = createSharpGlowTexture();
+      var softTex  = createSoftGlowTexture();
+
+      points = buildPoints(nodePositions, SPHERE_R, sharpTex);
+      lines  = buildLines(nodePositions, edgesData);
+      pulses = buildPulses(PULSE_COUNT, edgesData, sharpTex);
+      dust   = buildGalaxyDust(DUST_COUNT, SPHERE_R * 1.15, softTex);
+      burst  = buildBurst(BURST_COUNT, sharpTex);
+      var ring1 = buildOrbitRing(SPHERE_R * 0.62, 1.32, 0.35, 0x6de0ff, .28);
+      var ring2 = buildOrbitRing(SPHERE_R * 0.78, 1.02, -0.5, 0x0ea5e9, .16);
+      var coreParts = buildCore(sharpTex);
+      core = coreParts.core; glowOuter = coreParts.glowOuter; glowMid = coreParts.glowMid;
+      glowInner = coreParts.glowInner; hotPoint = coreParts.hotPoint;
+
+      group.add(lines, points, pulses, dust, burst, ring1, ring2, coreParts.group);
+
+      specular = buildSpecular(softTex);
+      scene.add(specular);
+
+      baseColor = new THREE.Color(0x00f0ff);
+      reactionColor = new THREE.Color(0x00f0ff);
+      currentColor = new THREE.Color(0x00f0ff);
+
+      clock = new THREE.Clock();
+      running = true;
+      ready = true;
+      animate();
+
+      window.addEventListener('resize', onResize);
+      window.addEventListener('pointermove', function(e){
+        var nx = (e.clientX / window.innerWidth) * 2 - 1;
+        var ny = (e.clientY / window.innerHeight) * 2 - 1;
+        mouseTarget.x = ny * 0.22;
+        mouseTarget.y = nx * 0.22;
+      });
+      document.addEventListener('visibilitychange', function(){
+        running = !document.hidden;
+        if (running) animate();
+      });
+    }catch(err){
+      console.warn('[Ocean8 Aura] Synapse engine failed to initialize —', err);
+      if (fallbackEl) fallbackEl.classList.add('show');
+    }
+  }
+
+  function reactTo(hex){
+    if (!ready) return;
+    reactionColor.set(hex);
+    reacting = true;
+    targetEnergy = 1;
+    triggerBurst(hex);
+  }
+  function resetReaction(){
+    if (!ready) return;
+    reacting = false;
+    targetEnergy = 0;
+  }
+
+  return { init:init, reactTo:reactTo, resetReaction:resetReaction };
+})();
+
+/* =================================================================
+   APP
+================================================================= */
+var els = {};
+var latestReport = DEMO_DATA;
+var activeAgent = null;
+var typeGeneration = 0;
+
+function cacheEls(){
+  ['agentOrbit','hudClock','modeBadge','tickerTrack','synapseSub','synapseFallback',
+   'panelBackdrop','agentPanel','panelClose','panelIcon','panelTitle','panelStatus',
+   'panelTerminal','typewriterLine','panelData','panelLog',
+   'statOnline','statLatency','statLoad','statConfidence',
+   'cyborgEngage','panelChat','panelChatInput','panelChatSend'].forEach(function(id){ els[id] = document.getElementById(id); });
+}
+
+function buildBgParticles(){
+  var host = document.getElementById('bgParticles');
+  var frag = document.createDocumentFragment();
+  for (var i = 0; i < 36; i++){
+    var p = document.createElement('span');
+    p.className = 'bg-particle';
+    p.style.left = (Math.random()*100) + '%';
+    p.style.animationDelay = (Math.random()*20) + 's';
+    p.style.animationDuration = (18 + Math.random()*14) + 's';
+    p.style.setProperty('--drift', (Math.random()*40-20) + 'px');
+    frag.appendChild(p);
+  }
+  host.appendChild(frag);
+}
+
+function buildAgentNodes(){
+  AGENTS.forEach(function(agent, i){
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'agent-node';
+    el.style.setProperty('--i', i);
+    el.style.setProperty('--accent', agent.color);
+    el.style.setProperty('--accent-glow', hexToRgba(agent.color, .4));
+    el.dataset.agent = agent.id;
+    el.setAttribute('aria-label', agent.name + ' agent');
+    el.innerHTML =
+      '<span class="agent-node-icon"><i class="fa-solid ' + agent.icon + '"></i></span>' +
+      '<span class="agent-node-name">' + agent.name + '</span>' +
+      '<span class="agent-node-role">' + agent.role + '</span>' +
+      '<span class="agent-node-status"><span class="dot"></span></span>';
+    el.addEventListener('click', function(){ selectAgent(agent.id); });
+    els.agentOrbit.appendChild(el);
+  });
+}
+
+function setModeBadge(isLive){
+  var modeBadge = document.getElementById('modeBadge');
+  modeBadge.classList.toggle('live', isLive);
+  modeBadge.classList.toggle('demo', !isLive);
+  modeBadge.innerHTML = '<span class="dot"></span>' + (isLive ? 'LIVE FEED' : 'DEMO MODE');
+}
+
+function normalizeReport(json){
+  var source = (json && json.agents) ? json.agents : json;
+  var out = {};
+  AGENTS.forEach(function(a){
+    out[a.id] = (source && (source[a.id] || source[a.name] || source[String(a.name).toLowerCase()])) || DEMO_DATA[a.id];
+  });
+  out.cyborg = (source && source.cyborg) || DEMO_DATA.cyborg;
+  return out;
+}
+
+function fetchReport(){
+  return fetch(API_ENDPOINT, { headers:{ 'Accept':'application/json' } })
+    .then(function(res){
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(function(json){
+      setModeBadge(true);
+      return normalizeReport(json);
+    })
+    .catch(function(err){
+      console.warn('[Ocean8 Aura] /api/report unreachable, using demo data —', err.message);
+      setModeBadge(false);
+      return DEMO_DATA;
+    });
+}
+
+function updateStatuses(report){
+  var nodes = els.agentOrbit.querySelectorAll('.agent-node');
+  nodes.forEach(function(node){
+    var id = node.dataset.agent;
+    var status = (report[id] && report[id].status) || 'offline';
+    var meta = STATUS_META[status] || STATUS_META.offline;
+    var dot = node.querySelector('.agent-node-status .dot');
+    if (dot) dot.style.background = meta.color;
+    node.classList.toggle('is-warning', status === 'warning');
+    node.classList.toggle('is-offline', status === 'offline');
+  });
+}
+
+function buildTicker(report){
+  var items = [];
+  AGENTS.forEach(function(a){
+    var d = report[a.id];
+    if (d && d.lastAction) items.push(a.name + ': ' + d.lastAction);
+  });
+  els.tickerTrack.textContent = items.length ? items.join('   ///   ') : 'NO TELEMETRY AVAILABLE';
+}
+
+function updateStatsStrip(report){
+  var agents = AGENTS.map(function(a){ return report[a.id]; }).filter(Boolean);
+  var onlineCount = agents.filter(function(a){ return a.status === 'online'; }).length;
+  var warningCount = agents.filter(function(a){ return a.status === 'warning'; }).length;
+  var offlineCount = agents.filter(function(a){ return a.status === 'offline'; }).length;
+
+  var latencies = agents.map(function(a){ return parseFloat(a.latency); }).filter(function(n){ return !isNaN(n); });
+  var loads = agents.map(function(a){ return parseFloat(a.load); }).filter(function(n){ return !isNaN(n); });
+  var avgLatency = latencies.length ? Math.round(latencies.reduce(function(a,b){ return a+b; },0) / latencies.length) : null;
+  var avgLoad = loads.length ? Math.round(loads.reduce(function(a,b){ return a+b; },0) / loads.length) : null;
+  var confidence = agents.length ? Math.max(0, Math.min(100, Math.round(100 - warningCount*8 - offlineCount*22))) : null;
+
+  els.statOnline.textContent = agents.length ? (onlineCount + '/' + agents.length) : '—';
+  els.statLatency.textContent = avgLatency !== null ? (avgLatency + 'ms') : '—';
+  els.statLoad.textContent = avgLoad !== null ? (avgLoad + '%') : '—';
+  els.statConfidence.textContent = confidence !== null ? (confidence + '%') : '—';
+}
+
+function buildIntroLine(agent, data){
+  var lines = {
+    online:  'Accessing ' + agent.name + ' Agent... Secure link established. Systems nominal.',
+    standby: 'Accessing ' + agent.name + ' Agent... Link established. Agent in standby.',
+    warning: 'Accessing ' + agent.name + ' Agent... Link established. Minor anomalies flagged.',
+    offline: 'Accessing ' + agent.name + ' Agent... Connection failed. Agent unreachable.'
+  };
+  return lines[data.status] || lines.online;
+}
+
+function renderPanelData(data){
+  var rows = [];
+  KNOWN_FIELDS.forEach(function(k){
+    if (data[k] !== undefined) rows.push([FIELD_LABELS[k] || formatKey(k), formatValue(data[k])]);
+  });
+  Object.keys(data).forEach(function(k){
+    if (KNOWN_FIELDS.indexOf(k) === -1 && EXCLUDE_ROWS.indexOf(k) === -1){
+      rows.push([formatKey(k), formatValue(data[k])]);
+    }
+  });
+  els.panelData.innerHTML = rows.map(function(r){
+    return '<div class="panel-row"><span class="panel-row-label">' + r[0] + '</span><span class="panel-row-value">' + r[1] + '</span></div>';
+  }).join('');
+
+  var log = data.log || data.logs || data.history;
+  if (Array.isArray(log) && log.length){
+    els.panelLog.innerHTML = '<div class="panel-log-title">ACTIVITY LOG</div>' +
+      log.map(function(l){ return '<div class="panel-log-row"><i class="fa-solid fa-angle-right"></i>' + formatValue(l) + '</div>'; }).join('');
+  } else {
+    els.panelLog.innerHTML = '';
+  }
+}
+
+function openPanel(agent, data){
+  var myGen = ++typeGeneration;
+  els.panelBackdrop.classList.add('open');
+  els.agentPanel.classList.add('open');
+  els.agentPanel.setAttribute('aria-hidden', 'false');
+  els.agentPanel.removeAttribute('inert');
+  els.panelIcon.innerHTML = '<i class="fa-solid ' + agent.icon + '"></i>';
+  els.panelIcon.style.setProperty('--accent', agent.color);
+  els.panelTitle.textContent = agent.name;
+  els.agentPanel.style.setProperty('--accent', agent.color);
+  els.agentPanel.style.setProperty('--accent-glow', hexToRgba(agent.color, .25));
+
+  var statusInfo = STATUS_META[data.status] || STATUS_META.online;
+  els.panelStatus.innerHTML = '<span class="dot" style="background:' + statusInfo.color + '"></span>' + statusInfo.label;
+
+  els.panelData.innerHTML = '';
+  els.panelLog.innerHTML = '';
+  els.typewriterLine.textContent = '';
+  els.synapseSub.textContent = 'LINKED: ' + agent.name;
+  els.synapseSub.style.color = agent.color;
+  els.panelTerminal.classList.add('speaking');
+
+  typeText(els.typewriterLine, buildIntroLine(agent, data), 18).then(function(){
+    els.panelTerminal.classList.remove('speaking');
+    if (myGen !== typeGeneration) return;
+    renderPanelData(data);
+  });
+}
+
+function closePanel(){
+  typeGeneration++;
+  els.agentPanel.classList.remove('open');
+  els.agentPanel.setAttribute('aria-hidden', 'true');
+  els.agentPanel.setAttribute('inert', '');
+  els.panelBackdrop.classList.remove('open');
+  els.panelTerminal.classList.remove('speaking');
+  els.agentOrbit.querySelectorAll('.agent-node').forEach(function(n){ n.classList.remove('active'); });
+  els.cyborgEngage.classList.remove('active');
+  els.synapseSub.textContent = 'AWAITING INPUT';
+  els.synapseSub.style.color = '';
+  activeAgent = null;
+  SynapseEngine.resetReaction();
+}
+
+function selectAgent(id){
+  if (activeAgent === id){ closePanel(); return; }
+  activeAgent = id;
+  els.agentOrbit.querySelectorAll('.agent-node').forEach(function(n){
+    n.classList.toggle('active', n.dataset.agent === id);
+  });
+  els.cyborgEngage.classList.toggle('active', id === 'cyborg');
+  var agent = (id === 'cyborg') ? CYBORG : AGENTS.filter(function(a){ return a.id === id; })[0];
+  var data = latestReport[id] || DEMO_DATA[id];
+  SynapseEngine.reactTo(agent.color);
+  openPanel(agent, data);
+}
+
+function tickClock(){
+  var d = new Date();
+  els.hudClock.textContent = d.toLocaleTimeString('en-GB', { hour12:false });
+}
+
+function refresh(){
+  fetchReport().then(function(report){
+    latestReport = report;
+    updateStatuses(report);
+    buildTicker(report);
+    updateStatsStrip(report);
+  });
+}
+
+function sendChatMessage(){
+  var text = els.panelChatInput.value.trim();
+  if (!text || !activeAgent || els.panelChatInput.disabled) return;
+  els.panelChatInput.value = '';
+  els.panelChatInput.disabled = true;
+  els.panelChatSend.disabled = true;
+  var targetAgent = activeAgent;
+
+  var chatUrl = targetAgent === 'cyborg' ? '/api/cyborg/chat' : '/api/agents/' + targetAgent + '/chat';
+  fetch(chatUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: text })
+  })
+    .then(function(res){ return res.json().then(function(json){ return { ok: res.ok, json: json }; }); })
+    .then(function(result){
+      els.panelChatInput.disabled = false;
+      els.panelChatSend.disabled = false;
+      els.panelChatInput.focus();
+      if (activeAgent !== targetAgent) return; // panel switched while the request was in flight
+      if (result.ok && result.json.status === 'success'){
+        appendChatExchange(text, result.json.reply);
+        markAgentOnline(targetAgent, result.json.reply);
+        var myGen = ++typeGeneration;
+        els.panelTerminal.classList.add('speaking');
+        typeText(els.typewriterLine, result.json.reply, 16).then(function(){
+          if (myGen === typeGeneration) els.panelTerminal.classList.remove('speaking');
+        });
+      } else {
+        appendChatExchange(text, result.json.reply || 'Request failed.');
+      }
+    })
+    .catch(function(){
+      els.panelChatInput.disabled = false;
+      els.panelChatSend.disabled = false;
+      appendChatExchange(text, 'Connection error — message not delivered.');
+    });
+}
+
+function markAgentOnline(agentId, latestReply){
+  if (latestReport[agentId]){
+    latestReport[agentId].status = 'online';
+    latestReport[agentId].interactions = (latestReport[agentId].interactions || 0) + 1;
+    if (latestReply) latestReport[agentId].lastAction = latestReply;
+  }
+  var node = els.agentOrbit.querySelector('.agent-node[data-agent="' + agentId + '"] .agent-node-status .dot');
+  if (node) node.style.background = STATUS_META.online.color;
+  var orbitNode = els.agentOrbit.querySelector('.agent-node[data-agent="' + agentId + '"]');
+  if (orbitNode){ orbitNode.classList.remove('is-warning','is-offline'); }
+  if (activeAgent === agentId){
+    els.panelStatus.innerHTML = '<span class="dot" style="background:' + STATUS_META.online.color + '"></span>' + STATUS_META.online.label;
+    els.panelData.querySelectorAll('.panel-row').forEach(function(row){
+      var label = row.querySelector('.panel-row-label');
+      if (!label) return;
+      if (label.textContent === 'Interactions'){
+        var valueEl = row.querySelector('.panel-row-value');
+        var n = parseInt(valueEl.textContent, 10);
+        valueEl.textContent = isNaN(n) ? '1' : String(n + 1);
+      } else if (label.textContent === 'Last Action' && latestReply){
+        row.querySelector('.panel-row-value').textContent = latestReply;
+      }
+    });
+  }
+}
+
+function appendChatExchange(userText, reply){
+  if (!els.panelLog.querySelector('.panel-log-title')){
+    els.panelLog.innerHTML = '<div class="panel-log-title">ACTIVITY LOG</div>' + els.panelLog.innerHTML;
+  }
+  var row = document.createElement('div');
+  row.className = 'panel-log-row';
+  var icon = document.createElement('i');
+  icon.className = 'fa-solid fa-angle-right';
+  row.appendChild(icon);
+  row.appendChild(document.createTextNode(' ' + userText + ' \u2192 ' + reply));
+  var title = els.panelLog.querySelector('.panel-log-title');
+  title.insertAdjacentElement('afterend', row);
+}
+
+function init(){
+  cacheEls();
+  buildBgParticles();
+  buildAgentNodes();
+  SynapseEngine.init(document.getElementById('synapseCanvas'), els.synapseFallback);
+
+  els.panelClose.addEventListener('click', closePanel);
+  els.panelBackdrop.addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closePanel(); });
+
+  els.cyborgEngage.addEventListener('click', function(){ selectAgent('cyborg'); });
+  els.panelChatSend.addEventListener('click', sendChatMessage);
+  els.panelChatInput.addEventListener('keydown', function(e){
+    if (e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
+  });
+
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  updateStatuses(DEMO_DATA);
+  buildTicker(DEMO_DATA);
+  updateStatsStrip(DEMO_DATA);
+  refresh();
+  setInterval(refresh, POLL_INTERVAL_MS);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
