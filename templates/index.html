@@ -242,12 +242,18 @@ button{ font-family:inherit; }
 }
 .cyborg-engage{
   all:unset; box-sizing:border-box; cursor:pointer; pointer-events:auto; z-index:6;
-  position:absolute; left:50%; bottom:112px; transform:translateX(-50%);
-  display:inline-flex; align-items:center; gap:8px; white-space:nowrap;
-  padding:8px 18px; border-radius:20px; border:1px solid rgba(0,240,255,.32);
-  background:rgba(255,255,255,.03); backdrop-filter:blur(8px);
-  font-family:var(--font-mono); font-size:.64rem; letter-spacing:.16em; color:var(--jade);
+  position:absolute; left:50%; bottom:108px; transform:translateX(-50%);
+  display:inline-flex; align-items:center; gap:10px; white-space:nowrap;
+  padding:13px 28px; border-radius:30px; border:2px solid rgba(0,240,255,.75);
+  background:rgba(0,240,255,.1); backdrop-filter:blur(10px);
+  font-family:var(--font-mono); font-size:.82rem; letter-spacing:.18em; color:var(--jade);
   transition:background .25s, box-shadow .25s, transform .25s;
+  box-shadow:0 0 20px rgba(0,240,255,.4), inset 0 0 14px rgba(0,240,255,.1);
+  animation:cyburg-pulse 2.4s ease-in-out infinite;
+}
+@keyframes cyburg-pulse{
+  0%,100%{ box-shadow:0 0 20px rgba(0,240,255,.4), inset 0 0 14px rgba(0,240,255,.1); }
+  50%{ box-shadow:0 0 36px rgba(0,240,255,.75), inset 0 0 20px rgba(0,240,255,.18); }
 }
 .cyborg-engage:hover{ background:rgba(0,240,255,.12); box-shadow:0 0 22px rgba(0,240,255,.3); transform:translateX(-50%) translateY(-2px); }
 .cyborg-engage.active{ background:rgba(0,240,255,.16); box-shadow:0 0 24px rgba(0,240,255,.4); border-color:var(--jade); }
@@ -500,10 +506,10 @@ button{ font-family:inherit; }
       <span class="core-bracket br"></span>
     </div>
     <div class="synapse-label">
-      <span class="synapse-label-tag">⟡ SYNAPSE CORE <em>· AURA-9</em></span>
+      <span class="synapse-label-tag">⟡ SYNAPSE CORE <em>· AURA-8</em></span>
       <span class="synapse-label-sub" id="synapseSub">AWAITING INPUT</span>
     </div>
-    <button type="button" class="cyborg-engage" id="cyborgEngage"><i class="fa-solid fa-brain"></i> ENGAGE CYBORG</button>
+    <button type="button" class="cyborg-engage" id="cyborgEngage"><i class="fa-solid fa-brain" style="font-size:1.1rem"></i> ENGAGE CYBURG</button>
   </div>
   <nav class="agent-orbit" id="agentOrbit" aria-label="Agent selection"></nav>
 </main>
@@ -566,7 +572,7 @@ var AGENTS = [
 
 /* The Cyborg itself — the central Synapse core, reachable via the ENGAGE
    CYBORG button rather than an orbit widget. Uses the same panel/chat UI. */
-var CYBORG = { id:'cyborg', name:'CYBORG', role:'ORCHESTRATOR', icon:'fa-brain', color:'#00f0ff' };
+var CYBORG = { id:'cyborg', name:'CYBURG', role:'ORCHESTRATOR', icon:'fa-brain', color:'#00f0ff' };
 
 var STATUS_META = {
   online:  { color:'#0099ff', label:'ONLINE'  },
