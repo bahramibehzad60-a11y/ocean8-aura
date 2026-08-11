@@ -1329,6 +1329,10 @@ function sendChatMessage(){
         typeText(els.typewriterLine, result.json.reply, 16).then(function(){
           if (myGen === typeGeneration) els.panelTerminal.classList.remove('speaking');
         });
+        if (targetAgent === 'cyborg' && result.json.audio) {
+          var audio = new Audio('data:audio/mpeg;base64,' + result.json.audio);
+          audio.play().catch(function(e){ console.warn('CYBURG voice playback failed:', e); });
+        }
       } else {
         appendChatExchange(text, result.json.reply || 'Request failed.');
       }
