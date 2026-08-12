@@ -129,6 +129,16 @@ def _looks_like_marketing_request(message):
     return any(kw in lower for kw in MARKETING_KEYWORDS)
 
 
+def _safe_log(agent_id, message, reply, ok):
+    """log_interaction wrapped so a transient DB error (e.g. SQLite lock under
+    concurrent requests) degrades gracefully instead of crashing the request —
+    matches the try/except pattern used everywhere else in this codebase."""
+    try:
+        log_interaction(agent_id, message, reply, ok=1 if ok else 0)
+    except Exception as e:
+        print(f"[Ocean8 Aura] log_interaction failed for '{agent_id}': {e}")
+
+
 def _marketing_chain(message):
     """Guaranteed real two-step consult for anything customer-facing: Mercury
     drafts it, Saul compliance-checks it — both are REAL generate_specialist_reply
@@ -136,13 +146,17 @@ def _marketing_chain(message):
     talk its way around. Only the final synthesis sentence is left to Claude,
     and only using the two real results already in hand — nothing to fabricate.
     Returns (text, ok, consulted) same shape as the general path."""
+    print(f"[Ocean8 Aura] MARKETING CHAIN TRIGGERED for message: {message!r}")
     mercury_reply, mercury_ok = generate_specialist_reply('mercury', message)
+    _safe_log('mercury', message, mercury_reply, mercury_ok)
+    print(f"[Ocean8 Aura] mercury logged, ok={mercury_ok}")
     saul_question = (
         f"Ocean 8 Eco Green Corp (luxury home wellness, GTA) wants to publish this "
         f"marketing content — quick compliance check for exaggerated health/therapeutic "
         f"claims or Canadian ad-standards issues: {mercury_reply}"
     )
     saul_reply, saul_ok = generate_specialist_reply('saul', saul_question)
+    _safe_log('saul', saul_question, saul_reply, saul_ok)
     consulted = ['mercury', 'saul']
 
     if _client is None:
@@ -173,10 +187,12 @@ def _marketing_chain(message):
 
 def handle_message(message, max_rounds=3):
     if _client is None:
+        print("[Ocean8 Aura] handle_message: no Anthropic client configured (missing API key)")
         return CYBORG_TEMPLATE.format(msg=message), True, []
 
     if _looks_like_marketing_request(message):
         return _marketing_chain(message)
+    print(f"[Ocean8 Aura] general tool-loop path (not marketing-flagged) for: {message!r}")
 
     consulted = []
     messages = [{'role': 'user', 'content': message}]
@@ -202,6 +218,7 @@ def handle_message(message, max_rounds=3):
                 question = (block.input or {}).get('question') or message
                 if agent_id in SPECIALIST_IDS:
                     reply, _ok = generate_specialist_reply(agent_id, question)
+                    _safe_log(agent_id, question, reply, _ok)
                     consulted.append(agent_id)
                 else:
                     reply = f'Unknown specialist: {agent_id}'
