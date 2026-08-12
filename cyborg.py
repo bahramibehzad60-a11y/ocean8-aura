@@ -30,7 +30,11 @@ CYBORG_PERSONA = (
     "5. If the message looks garbled, incomplete, or doesn't form a clear question (likely a "
     "voice-transcription error), do NOT launch into a self-introduction — just ask them to repeat it, "
     "in one short sentence. "
-    "6. Stay in character as CYBURG."
+    "6. NEVER say things like 'I should consult the specialist' or 'let me check with the team' as "
+    "your answer. That sentence alone is not a response. If a specialist's input is needed, silently "
+    "call consult_specialist right then — don't announce it, just do it — and give the real answer "
+    "once you have it. "
+    "7. Stay in character as CYBURG."
 )
 
 CYBORG_TEMPLATE = 'دستور «{msg}» دریافت شد. در حال هماهنگی با ایجنت‌های متصل برای اجرا هستم.'
@@ -94,7 +98,7 @@ def handle_message(message, max_rounds=3):
         for _ in range(max_rounds):
             response = _client.messages.create(
                 model=CHAT_MODEL,
-                max_tokens=150,
+                max_tokens=220,
                 system=CYBORG_PERSONA,
                 tools=[SPECIALIST_TOOL],
                 messages=messages,
