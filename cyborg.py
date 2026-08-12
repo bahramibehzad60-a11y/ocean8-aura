@@ -55,7 +55,10 @@ CYBORG_PERSONA = (
     "8. Word limit is normally 25 words / 2 sentences. Exception: after a genuine two-specialist chain "
     "(e.g., mercury then saul), you may use up to 45 words / 3 sentences to fairly represent both — "
     "still never pad beyond what's needed. "
-    "9. Stay in character as CYBURG."
+    "9. When you need a specialist, call consult_specialist as your very first output — no lead-in "
+    "text at all, not even 'connecting...' or 'checking with the team...'. Zero words before the tool "
+    "call. Write your sentence to the user only after you have the real result back. "
+    "10. Stay in character as CYBURG."
 )
 
 CYBORG_TEMPLATE = 'دستور «{msg}» دریافت شد. در حال هماهنگی با ایجنت‌های متصل برای اجرا هستم.'
@@ -119,7 +122,7 @@ def handle_message(message, max_rounds=3):
         for _ in range(max_rounds):
             response = _client.messages.create(
                 model=CHAT_MODEL,
-                max_tokens=220,
+                max_tokens=400,
                 system=CYBORG_PERSONA,
                 tools=[SPECIALIST_TOOL],
                 messages=messages,
