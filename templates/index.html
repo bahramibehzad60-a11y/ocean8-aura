@@ -438,6 +438,22 @@ button{ font-family:inherit; }
 }
 .panel-chat-send:hover{ background:rgba(0,240,255,.22); }
 .panel-chat-send:disabled{ opacity:.5; cursor:default; }
+.panel-chat-mic{
+  all:unset; box-sizing:border-box; cursor:pointer; width:40px; height:40px; flex-shrink:0;
+  display:grid; place-items:center; border-radius:8px;
+  background:rgba(0,240,255,.12); color:var(--accent, var(--jade)); border:1px solid rgba(0,240,255,.25);
+  transition:background .2s;
+}
+.panel-chat-mic:hover{ background:rgba(0,240,255,.22); }
+.panel-chat-mic.mic-listening{
+  background:rgba(244,63,94,.18); border-color:rgba(244,63,94,.55); color:#f43f5e;
+  animation:mic-pulse 1.1s ease-in-out infinite;
+}
+@keyframes mic-pulse{
+  0%,100%{ box-shadow:0 0 0 0 rgba(244,63,94,.4); }
+  50%{ box-shadow:0 0 0 8px rgba(244,63,94,0); }
+}
+.panel-chat-mic[hidden]{ display:none; }
 
 .panel-data{ display:flex; flex-direction:column; gap:1px; margin-bottom:16px; border-radius:10px; overflow:hidden; }
 .panel-row{
@@ -544,6 +560,7 @@ button{ font-family:inherit; }
   </div>
   <div class="panel-chat" id="panelChat">
     <input type="text" id="panelChatInput" class="panel-chat-input" placeholder="Send a command..." autocomplete="off" maxlength="300">
+    <button type="button" id="panelChatMic" class="panel-chat-mic" aria-label="Voice input" title="Voice input"><i class="fa-solid fa-microphone"></i></button>
     <button type="button" id="panelChatSend" class="panel-chat-send" aria-label="Send message"><i class="fa-solid fa-paper-plane"></i></button>
   </div>
   <div class="panel-data" id="panelData"></div>
@@ -1085,7 +1102,7 @@ function cacheEls(){
    'panelBackdrop','agentPanel','panelClose','panelIcon','panelTitle','panelStatus',
    'panelTerminal','typewriterLine','panelData','panelLog',
    'statOnline','statLatency','statLoad','statConfidence',
-   'cyborgEngage','panelChat','panelChatInput','panelChatSend'].forEach(function(id){ els[id] = document.getElementById(id); });
+   'cyborgEngage','panelChat','panelChatInput','panelChatSend','panelChatMic'].forEach(function(id){ els[id] = document.getElementById(id); });
 }
 
 function buildBgParticles(){
@@ -1384,6 +1401,47 @@ function appendChatExchange(userText, reply){
   title.insertAdjacentElement('afterend', row);
 }
 
+/* Voice input for the chat panel: browser-native speech recognition (Chrome's
+   webkitSpeechRecognition), no backend involved. It fills the recognized text
+   into panelChatInput so the person can review it before sending — same as
+   typing. If the browser doesn't support it, the mic button just hides. */
+function setupVoiceInput(){
+  var RecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!RecognitionAPI || !els.panelChatMic){
+    if (els.panelChatMic) els.panelChatMic.hidden = true;
+    return;
+  }
+  var recognition = new RecognitionAPI();
+  recognition.lang = 'fa-IR';
+  recognition.interimResults = false;
+  recognition.continuous = false;
+  var listening = false;
+
+  recognition.onstart = function(){
+    listening = true;
+    els.panelChatMic.classList.add('mic-listening');
+  };
+  recognition.onend = function(){
+    listening = false;
+    els.panelChatMic.classList.remove('mic-listening');
+  };
+  recognition.onerror = function(e){
+    listening = false;
+    els.panelChatMic.classList.remove('mic-listening');
+    console.warn('[Ocean8 Aura] Voice input error:', e.error);
+  };
+  recognition.onresult = function(e){
+    var transcript = e.results[0][0].transcript;
+    els.panelChatInput.value = transcript;
+    els.panelChatInput.focus();
+  };
+
+  els.panelChatMic.addEventListener('click', function(){
+    if (listening){ recognition.stop(); return; }
+    try { recognition.start(); } catch(err){ console.warn('[Ocean8 Aura] Could not start voice input:', err); }
+  });
+}
+
 function init(){
   cacheEls();
   buildBgParticles();
@@ -1399,6 +1457,7 @@ function init(){
   els.panelChatInput.addEventListener('keydown', function(e){
     if (e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
   });
+  setupVoiceInput();
 
   tickClock();
   setInterval(tickClock, 1000);
