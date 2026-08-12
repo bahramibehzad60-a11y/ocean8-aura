@@ -454,6 +454,15 @@ button{ font-family:inherit; }
   50%{ box-shadow:0 0 0 8px rgba(244,63,94,0); }
 }
 .panel-chat-mic[hidden]{ display:none; }
+.panel-chat-mic-lang{
+  all:unset; box-sizing:border-box; cursor:pointer; width:34px; height:40px; flex-shrink:0;
+  display:grid; place-items:center; border-radius:8px;
+  background:rgba(0,240,255,.08); color:var(--text-low); border:1px solid rgba(0,240,255,.18);
+  font-family:var(--font-mono); font-size:.62rem; letter-spacing:.05em; font-weight:700;
+  transition:background .2s, color .2s;
+}
+.panel-chat-mic-lang:hover{ background:rgba(0,240,255,.18); color:var(--text-hi); }
+.panel-chat-mic-lang[hidden]{ display:none; }
 
 .panel-data{ display:flex; flex-direction:column; gap:1px; margin-bottom:16px; border-radius:10px; overflow:hidden; }
 .panel-row{
@@ -561,6 +570,7 @@ button{ font-family:inherit; }
   <div class="panel-chat" id="panelChat">
     <input type="text" id="panelChatInput" class="panel-chat-input" placeholder="Send a command..." autocomplete="off" maxlength="300">
     <button type="button" id="panelChatMic" class="panel-chat-mic" aria-label="Voice input" title="Voice input"><i class="fa-solid fa-microphone"></i></button>
+    <button type="button" id="panelChatMicLang" class="panel-chat-mic-lang" aria-label="Voice input language" title="Voice input language">FA</button>
     <button type="button" id="panelChatSend" class="panel-chat-send" aria-label="Send message"><i class="fa-solid fa-paper-plane"></i></button>
   </div>
   <div class="panel-data" id="panelData"></div>
@@ -1102,7 +1112,7 @@ function cacheEls(){
    'panelBackdrop','agentPanel','panelClose','panelIcon','panelTitle','panelStatus',
    'panelTerminal','typewriterLine','panelData','panelLog',
    'statOnline','statLatency','statLoad','statConfidence',
-   'cyborgEngage','panelChat','panelChatInput','panelChatSend','panelChatMic'].forEach(function(id){ els[id] = document.getElementById(id); });
+   'cyborgEngage','panelChat','panelChatInput','panelChatSend','panelChatMic','panelChatMicLang'].forEach(function(id){ els[id] = document.getElementById(id); });
 }
 
 function buildBgParticles(){
@@ -1404,15 +1414,19 @@ function appendChatExchange(userText, reply){
 /* Voice input for the chat panel: browser-native speech recognition (Chrome's
    webkitSpeechRecognition), no backend involved. It fills the recognized text
    into panelChatInput so the person can review it before sending — same as
-   typing. If the browser doesn't support it, the mic button just hides. */
+   typing. If the browser doesn't support it, the mic button just hides.
+   The language toggle (FA/EN) matters because speech recognition only
+   understands one language per attempt — it doesn't auto-detect. */
 function setupVoiceInput(){
   var RecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!RecognitionAPI || !els.panelChatMic){
     if (els.panelChatMic) els.panelChatMic.hidden = true;
+    if (els.panelChatMicLang) els.panelChatMicLang.hidden = true;
     return;
   }
+  var LANGS = { 'fa-IR': 'FA', 'en-US': 'EN' };
+  var currentLang = 'fa-IR';
   var recognition = new RecognitionAPI();
-  recognition.lang = 'fa-IR';
   recognition.interimResults = false;
   recognition.continuous = false;
   var listening = false;
@@ -1438,8 +1452,17 @@ function setupVoiceInput(){
 
   els.panelChatMic.addEventListener('click', function(){
     if (listening){ recognition.stop(); return; }
+    recognition.lang = currentLang;
     try { recognition.start(); } catch(err){ console.warn('[Ocean8 Aura] Could not start voice input:', err); }
   });
+
+  if (els.panelChatMicLang){
+    els.panelChatMicLang.textContent = LANGS[currentLang];
+    els.panelChatMicLang.addEventListener('click', function(){
+      currentLang = (currentLang === 'fa-IR') ? 'en-US' : 'fa-IR';
+      els.panelChatMicLang.textContent = LANGS[currentLang];
+    });
+  }
 }
 
 function init(){
