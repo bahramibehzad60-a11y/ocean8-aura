@@ -274,14 +274,16 @@ button{ font-family:inherit; }
 /* =================================================================
    AGENT ORBIT
 ================================================================= */
-.agent-orbit{ position:absolute; inset:0; --total:7; }
+.agent-orbit{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:space-between;
+  padding:100px 5vw 140px; pointer-events:none;
+}
+.agent-column{
+  display:flex; flex-direction:column; gap:16px; pointer-events:auto;
+}
 .agent-node{
-  all:unset;
-  position:absolute; top:var(--computed-center-y, 41%); left:50%; box-sizing:border-box;
-  --angle:calc((var(--i) * (360deg / var(--total))) + 25.7deg);
-  --radius:var(--computed-radius, min(35vw, 27vh, 300px));
-  transform:translate(-50%,-50%) rotate(var(--angle)) translateX(var(--radius)) rotate(calc(-1 * var(--angle)));
-  width:96px; padding:12px 8px 10px; text-align:center; cursor:pointer;
+  all:unset; box-sizing:border-box; cursor:pointer;
+  width:126px; padding:12px 10px 10px; text-align:center;
   display:flex; flex-direction:column; align-items:center; gap:6px;
   border-radius:16px;
   background:var(--glass-bg);
@@ -289,10 +291,10 @@ button{ font-family:inherit; }
   backdrop-filter:blur(14px) saturate(140%);
   -webkit-backdrop-filter:blur(14px) saturate(140%);
   box-shadow:0 10px 30px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.02) inset;
-  transition:transform .4s var(--ease-out), box-shadow .4s, border-color .4s, opacity .3s, filter .3s;
+  transition:transform .3s var(--ease-out), box-shadow .3s, border-color .3s, opacity .3s, filter .3s;
 }
 .agent-node:hover{
-  transform:translate(-50%,-50%) rotate(var(--angle)) translateX(var(--radius)) rotate(calc(-1 * var(--angle))) scale(1.07);
+  transform:translateY(-3px);
   border-color:var(--accent, var(--jade));
   box-shadow:0 14px 34px rgba(0,0,0,.5), 0 0 22px var(--accent-glow, rgba(0,240,255,.35));
 }
@@ -320,18 +322,17 @@ button{ font-family:inherit; }
   body{ overflow-y:auto; overflow-x:hidden; }
   .synapse-visual{ position:relative; inset:auto; height:50vh; min-height:360px; }
   .agent-orbit{
-    position:relative; inset:auto; display:grid;
-    grid-template-columns:repeat(3, 1fr); gap:12px;
+    position:relative; inset:auto; display:block;
     padding:6px 16px 150px;
   }
-  .agent-node{
-    position:relative !important; top:auto !important; left:auto !important;
-    transform:none !important; width:auto;
+  .agent-column{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:12px;
+    margin-bottom:12px;
   }
-  .agent-node:hover{ transform:translateY(-3px) !important; }
+  .agent-node{ width:auto; }
 }
 @media (max-width:480px){
-  .agent-orbit{ grid-template-columns:repeat(2, 1fr); }
+  .agent-column{ grid-template-columns:repeat(2, 1fr); }
   .agent-node-name{ font-size:.58rem; }
 }
 
@@ -1131,11 +1132,15 @@ function buildBgParticles(){
 }
 
 function buildAgentNodes(){
+  var left = document.createElement('div');
+  left.className = 'agent-column agent-column-left';
+  var right = document.createElement('div');
+  right.className = 'agent-column agent-column-right';
+
   AGENTS.forEach(function(agent, i){
     var el = document.createElement('button');
     el.type = 'button';
     el.className = 'agent-node';
-    el.style.setProperty('--i', i);
     el.style.setProperty('--accent', agent.color);
     el.style.setProperty('--accent-glow', hexToRgba(agent.color, .4));
     el.dataset.agent = agent.id;
@@ -1146,49 +1151,11 @@ function buildAgentNodes(){
       '<span class="agent-node-role">' + agent.role + '</span>' +
       '<span class="agent-node-status"><span class="dot"></span></span>';
     el.addEventListener('click', function(){ selectAgent(agent.id); });
-    els.agentOrbit.appendChild(el);
+    (i < 3 ? left : right).appendChild(el);
   });
-}
 
-function debounce(fn, wait){
-  var t;
-  return function(){
-    clearTimeout(t);
-    t = setTimeout(fn, wait);
-  };
-}
-
-/* Measures the ACTUAL rendered layout (not guessed vw/vh) and computes the
-   exact center point and radius so the orbit ring always clears the header
-   above and the ENGAGE CYBURG button below, on any real window size. Runs
-   after layout and on resize — this replaces static viewport-unit guessing
-   with real measurement. */
-function layoutOrbit(){
-  var stage = document.querySelector('.synapse-visual');
-  var header = document.querySelector('.hud-topbar');
-  if (!stage || !els.agentOrbit || !els.cyborgEngage) return;
-
-  var stageRect = stage.getBoundingClientRect();
-  var headerBottom = header ? header.getBoundingClientRect().bottom : stageRect.top;
-  var buttonTop = els.cyborgEngage.getBoundingClientRect().top;
-
-  var MARGIN = 26;              // breathing room from header / button
-  var CARD_HALF_H = 64;         // half a card's rendered height
-  var CARD_HALF_W = 54;         // half a card's rendered width
-  var SIDE_MARGIN = 18;
-
-  var topLimit = Math.max(stageRect.top, headerBottom) + MARGIN;
-  var bottomLimit = buttonTop - MARGIN;
-  var availableH = bottomLimit - topLimit;
-  if (availableH < 120) availableH = 120; // sane floor so it never collapses
-
-  var centerY = topLimit + availableH / 2 - stageRect.top;
-  var radiusByHeight = availableH / 2 - CARD_HALF_H;
-  var radiusByWidth = stageRect.width / 2 - CARD_HALF_W - SIDE_MARGIN;
-  var radius = Math.max(90, Math.min(radiusByHeight, radiusByWidth, 300));
-
-  els.agentOrbit.style.setProperty('--computed-radius', radius + 'px');
-  els.agentOrbit.style.setProperty('--computed-center-y', centerY + 'px');
+  els.agentOrbit.appendChild(left);
+  els.agentOrbit.appendChild(right);
 }
 
 function setModeBadge(isLive){
@@ -1510,9 +1477,6 @@ function init(){
   cacheEls();
   buildBgParticles();
   buildAgentNodes();
-  layoutOrbit();
-  window.addEventListener('resize', debounce(layoutOrbit, 120));
-  setTimeout(layoutOrbit, 300); // re-measure once fonts/layout settle
   SynapseEngine.init(document.getElementById('synapseCanvas'), els.synapseFallback);
 
   els.panelClose.addEventListener('click', closePanel);
