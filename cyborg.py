@@ -112,9 +112,71 @@ def generate_voice(text):
         return None
 
 
+MARKETING_KEYWORDS = [
+    'ایمیل', 'پست', 'اینستاگرام', 'تبلیغ', 'تبلیغات', 'کمپین', 'محتوا', 'مارکتینگ',
+    'کپشن', 'شبکه اجتماعی', 'بنویس', 'متن تبلیغاتی',
+    'email', 'e-mail', 'post', 'instagram', 'facebook', 'ad ', 'ads', 'advert',
+    'campaign', 'content', 'marketing', 'social media', 'caption', 'newsletter',
+]
+
+
+def _looks_like_marketing_request(message):
+    """Cheap keyword check for customer-facing content requests — this is what
+    triggers the guaranteed mercury-then-saul chain below. False positives just
+    mean an unnecessary (but harmless) real consult; false negatives fall back
+    to the model's own judgement via the normal tool loop."""
+    lower = message.lower()
+    return any(kw in lower for kw in MARKETING_KEYWORDS)
+
+
+def _marketing_chain(message):
+    """Guaranteed real two-step consult for anything customer-facing: Mercury
+    drafts it, Saul compliance-checks it — both are REAL generate_specialist_reply
+    calls (real logging, real interaction counts), not something the model can
+    talk its way around. Only the final synthesis sentence is left to Claude,
+    and only using the two real results already in hand — nothing to fabricate.
+    Returns (text, ok, consulted) same shape as the general path."""
+    mercury_reply, mercury_ok = generate_specialist_reply('mercury', message)
+    saul_question = (
+        f"Ocean 8 Eco Green Corp (luxury home wellness, GTA) wants to publish this "
+        f"marketing content — quick compliance check for exaggerated health/therapeutic "
+        f"claims or Canadian ad-standards issues: {mercury_reply}"
+    )
+    saul_reply, saul_ok = generate_specialist_reply('saul', saul_question)
+    consulted = ['mercury', 'saul']
+
+    if _client is None:
+        return CYBORG_TEMPLATE.format(msg=message), True, consulted
+
+    try:
+        synth = _client.messages.create(
+            model=CHAT_MODEL,
+            max_tokens=150,
+            system=CYBORG_PERSONA,
+            messages=[{
+                'role': 'user',
+                'content': (
+                    f"User asked: {message}\n\n"
+                    f"Mercury's real draft: {mercury_reply}\n\n"
+                    f"Saul's real compliance note: {saul_reply}\n\n"
+                    "Combine these two REAL results into your final answer to the user, "
+                    "following rule 8's 45-word allowance for a two-specialist chain."
+                ),
+            }],
+        )
+        text = ''.join(b.text for b in synth.content if getattr(b, 'type', None) == 'text').strip()
+        return (text or CYBORG_TEMPLATE.format(msg=message)), (mercury_ok and saul_ok), consulted
+    except Exception as e:
+        print(f"[Ocean8 Aura] Marketing-chain synthesis failed: {e}")
+        return CYBORG_TEMPLATE.format(msg=message), False, consulted
+
+
 def handle_message(message, max_rounds=3):
     if _client is None:
         return CYBORG_TEMPLATE.format(msg=message), True, []
+
+    if _looks_like_marketing_request(message):
+        return _marketing_chain(message)
 
     consulted = []
     messages = [{'role': 'user', 'content': message}]
