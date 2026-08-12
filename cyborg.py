@@ -12,7 +12,7 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY')
 _client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=20.0) if ANTHROPIC_API_KEY else None
 CHAT_MODEL = 'claude-haiku-4-5-20251001'
-CYBURG_VOICE_ID = 'JBFqnCBsd6RMkjVDRZzb'
+CYBURG_VOICE_ID = 'TX3LPaxmHKxFdv7VOQHJ'  # Liam
 
 CYBORG_PERSONA = (
     "You are CYBURG, the central orchestrator of Ocean 8 Aura — "
