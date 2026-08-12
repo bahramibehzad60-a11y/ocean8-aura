@@ -277,9 +277,9 @@ button{ font-family:inherit; }
 .agent-orbit{ position:absolute; inset:0; --total:7; }
 .agent-node{
   all:unset;
-  position:absolute; top:41%; left:50%; box-sizing:border-box;
+  position:absolute; top:var(--computed-center-y, 41%); left:50%; box-sizing:border-box;
   --angle:calc((var(--i) * (360deg / var(--total))) + 25.7deg);
-  --radius:min(35vw, 27vh, 300px);
+  --radius:var(--computed-radius, min(35vw, 27vh, 300px));
   transform:translate(-50%,-50%) rotate(var(--angle)) translateX(var(--radius)) rotate(calc(-1 * var(--angle)));
   width:96px; padding:12px 8px 10px; text-align:center; cursor:pointer;
   display:flex; flex-direction:column; align-items:center; gap:6px;
@@ -1150,6 +1150,47 @@ function buildAgentNodes(){
   });
 }
 
+function debounce(fn, wait){
+  var t;
+  return function(){
+    clearTimeout(t);
+    t = setTimeout(fn, wait);
+  };
+}
+
+/* Measures the ACTUAL rendered layout (not guessed vw/vh) and computes the
+   exact center point and radius so the orbit ring always clears the header
+   above and the ENGAGE CYBURG button below, on any real window size. Runs
+   after layout and on resize — this replaces static viewport-unit guessing
+   with real measurement. */
+function layoutOrbit(){
+  var stage = document.querySelector('.synapse-visual');
+  var header = document.querySelector('.hud-topbar');
+  if (!stage || !els.agentOrbit || !els.cyborgEngage) return;
+
+  var stageRect = stage.getBoundingClientRect();
+  var headerBottom = header ? header.getBoundingClientRect().bottom : stageRect.top;
+  var buttonTop = els.cyborgEngage.getBoundingClientRect().top;
+
+  var MARGIN = 26;              // breathing room from header / button
+  var CARD_HALF_H = 64;         // half a card's rendered height
+  var CARD_HALF_W = 54;         // half a card's rendered width
+  var SIDE_MARGIN = 18;
+
+  var topLimit = Math.max(stageRect.top, headerBottom) + MARGIN;
+  var bottomLimit = buttonTop - MARGIN;
+  var availableH = bottomLimit - topLimit;
+  if (availableH < 120) availableH = 120; // sane floor so it never collapses
+
+  var centerY = topLimit + availableH / 2 - stageRect.top;
+  var radiusByHeight = availableH / 2 - CARD_HALF_H;
+  var radiusByWidth = stageRect.width / 2 - CARD_HALF_W - SIDE_MARGIN;
+  var radius = Math.max(90, Math.min(radiusByHeight, radiusByWidth, 300));
+
+  els.agentOrbit.style.setProperty('--computed-radius', radius + 'px');
+  els.agentOrbit.style.setProperty('--computed-center-y', centerY + 'px');
+}
+
 function setModeBadge(isLive){
   var modeBadge = document.getElementById('modeBadge');
   modeBadge.classList.toggle('live', isLive);
@@ -1469,6 +1510,9 @@ function init(){
   cacheEls();
   buildBgParticles();
   buildAgentNodes();
+  layoutOrbit();
+  window.addEventListener('resize', debounce(layoutOrbit, 120));
+  setTimeout(layoutOrbit, 300); // re-measure once fonts/layout settle
   SynapseEngine.init(document.getElementById('synapseCanvas'), els.synapseFallback);
 
   els.panelClose.addEventListener('click', closePanel);
