@@ -177,5 +177,67 @@ def classic_dashboard():
     return render_template_string(CLASSIC_TEMPLATE, logs=logs, products=products)
 
 
+# ---------------------------------------------------------------------------
+# Drafts — every piece of customer-facing content Mercury has generated,
+# newest first. Reads the same agent_logs table that's already being written
+# to; no new storage. This is a review surface, not an editor — the approve/
+# send workflow is a separate future step.
+# ---------------------------------------------------------------------------
+DRAFTS_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Ocean 8 Aura — پیش‌نویس‌ها</title>
+<style>
+  body{ background:#050b0f; color:#dff4f7; font-family:'Segoe UI', Tahoma, sans-serif; margin:0; padding:32px 24px; }
+  .top{ display:flex; align-items:baseline; justify-content:space-between; margin-bottom:24px; border-bottom:1px solid #0e2a30; padding-bottom:16px; }
+  .top h1{ font-size:1.3rem; margin:0; color:#5eead4; letter-spacing:.03em; }
+  .top a{ color:#5eead4; font-size:.85rem; text-decoration:none; }
+  .empty{ color:#5b7b81; padding:40px 0; text-align:center; }
+  .draft{ background:#0a161a; border:1px solid #123138; border-radius:12px; padding:18px 20px; margin-bottom:14px; }
+  .draft-meta{ display:flex; justify-content:space-between; font-size:.75rem; color:#5b7b81; margin-bottom:10px; }
+  .draft-req{ font-size:.8rem; color:#7fb8bf; margin-bottom:8px; }
+  .draft-req b{ color:#a8e6ec; }
+  .draft-body{ font-size:.95rem; line-height:1.8; white-space:pre-wrap; }
+  .badge{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:.68rem; }
+  .badge.ok{ background:rgba(94,234,212,.12); color:#5eead4; }
+  .badge.fail{ background:rgba(244,63,94,.12); color:#f43f5e; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1>◈ پیش‌نویس‌های Mercury</h1>
+    <a href="/">↩ بازگشت به HUD</a>
+  </div>
+  {% if drafts %}
+    {% for d in drafts %}
+    <div class="draft">
+      <div class="draft-meta">
+        <span>{{ d['timestamp'] }}</span>
+        <span class="badge {{ 'ok' if d['ok'] else 'fail' }}">{{ 'واقعی' if d['ok'] else 'fallback' }}</span>
+      </div>
+      <div class="draft-req"><b>درخواست:</b> {{ d['message'] }}</div>
+      <div class="draft-body">{{ d['response'] }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty">هنوز هیچ پیش‌نویسی ساخته نشده. از سایبرگ بخواه یه پست یا ایمیل بنویسه.</p>
+  {% endif %}
+</body>
+</html>
+"""
+
+
+@app.route('/drafts')
+def drafts_page():
+    conn = get_db()
+    drafts = conn.execute(
+        "SELECT timestamp, message, response, ok FROM agent_logs WHERE agent_name = 'mercury' ORDER BY id DESC LIMIT 50"
+    ).fetchall()
+    conn.close()
+    return render_template_string(DRAFTS_TEMPLATE, drafts=drafts)
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
