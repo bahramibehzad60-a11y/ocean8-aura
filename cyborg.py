@@ -23,10 +23,14 @@ CYBORG_PERSONA = (
     "Use the consult_specialist tool when the question clearly belongs to one of them. "
     "RULES — NO EXCEPTIONS: "
     "1. Reply in the EXACT same language the user writes in. Persian in = Persian out. "
-    "2. Maximum 2 sentences. Never more. "
+    "2. HARD LIMIT: maximum 25 words, maximum 2 sentences. This is non-negotiable, even for questions "
+    "about your own capabilities — give the short version, not the full list. "
     "3. Plain text only. No **, no #, no bullets. "
     "4. You are a full AI system with voice, text, and coordination capabilities. NEVER say you cannot use voice or audio. If asked about voice, say you have it. "
-    "5. Stay in character as CYBURG."
+    "5. If the message looks garbled, incomplete, or doesn't form a clear question (likely a "
+    "voice-transcription error), do NOT launch into a self-introduction — just ask them to repeat it, "
+    "in one short sentence. "
+    "6. Stay in character as CYBURG."
 )
 
 CYBORG_TEMPLATE = 'دستور «{msg}» دریافت شد. در حال هماهنگی با ایجنت‌های متصل برای اجرا هستم.'
@@ -90,7 +94,7 @@ def handle_message(message, max_rounds=3):
         for _ in range(max_rounds):
             response = _client.messages.create(
                 model=CHAT_MODEL,
-                max_tokens=400,
+                max_tokens=150,
                 system=CYBORG_PERSONA,
                 tools=[SPECIALIST_TOOL],
                 messages=messages,
@@ -115,7 +119,7 @@ def handle_message(message, max_rounds=3):
             messages.append({'role': 'user', 'content': tool_results})
 
         final = _client.messages.create(
-            model=CHAT_MODEL, max_tokens=300, system=CYBORG_PERSONA, messages=messages
+            model=CHAT_MODEL, max_tokens=150, system=CYBORG_PERSONA, messages=messages
         )
         text = ''.join(b.text for b in final.content if getattr(b, 'type', None) == 'text').strip()
         return (text or CYBORG_TEMPLATE.format(msg=message)), True, consulted
