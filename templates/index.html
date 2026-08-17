@@ -130,6 +130,14 @@ button{ font-family:inherit; }
 .agent-column{
   display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; width:268px; pointer-events:auto;
 }
+/* The lone 5th card (currently Vitruvius) spans both columns and centers
+   itself, instead of falling into the left column and leaving the layout
+   lopsided. As more agents are added to this side in the future and it's
+   no longer exactly 5, revisit this selector. */
+.agent-column-right .agent-node:nth-child(5){
+  grid-column: 1 / -1;
+  justify-self: center;
+}
 .agent-node{ all:unset; box-sizing:border-box; cursor:pointer; width:126px; padding:12px 10px 10px; text-align:center;
   display:flex; flex-direction:column; align-items:center; gap:6px; border-radius:16px; background:var(--glass-bg); border:1px solid var(--glass-border);
   backdrop-filter:blur(14px) saturate(140%); -webkit-backdrop-filter:blur(14px) saturate(140%);
@@ -151,6 +159,7 @@ button{ font-family:inherit; }
   .synapse-visual{ position:relative; inset:auto; height:50vh; min-height:360px; }
   .agent-orbit{ position:relative; inset:auto; display:block; padding:6px 16px 150px; }
   .agent-column{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; width:auto; margin-bottom:12px; }
+  .agent-column-right .agent-node:nth-child(5){ grid-column:auto; justify-self:auto; }
   .agent-node{ width:auto; }
 }
 @media (max-width:480px){ .agent-column{ grid-template-columns:repeat(2, 1fr); } .agent-node-name{ font-size:.58rem; } }
