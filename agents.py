@@ -12,6 +12,7 @@
 #
 # Cyborg is deliberately NOT here — see cyborg.py.
 # ---------------------------------------------------------------------------
+
 from flask import Blueprint, request, jsonify
 from anthropic import Anthropic
 import os
@@ -23,6 +24,7 @@ agents_bp = Blueprint('agents', __name__)
 
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 _client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=20.0) if ANTHROPIC_API_KEY else None
+
 CHAT_MODEL = 'claude-haiku-4-5-20251001'  # fast + inexpensive, appropriate for short HUD replies
 
 _BRAND_CONTEXT = (
@@ -32,14 +34,16 @@ _BRAND_CONTEXT = (
 )
 
 SPECIALIST_PERSONAS = {
-    'ikigai':  f"{_BRAND_CONTEXT} You are Ikigai, the purpose and strategic-alignment agent — you check that requests and decisions align with the brand's long-term vision and core purpose.",
-    'wolf':    f"{_BRAND_CONTEXT} You are Wolf, the market-opportunity agent — sharp and a little predatory in a good way, focused on leads, competitive moves, and growth opportunities in the GTA wellness market.",
+    'ikigai': f"{_BRAND_CONTEXT} You are Ikigai, the purpose and strategic-alignment agent — you check that requests and decisions align with the brand's long-term vision and core purpose.",
+    'wolf': f"{_BRAND_CONTEXT} You are Wolf, the market-opportunity agent — sharp and a little predatory in a good way, focused on leads, competitive moves, and growth opportunities in the GTA wellness market.",
     'mercury': f"{_BRAND_CONTEXT} You are Mercury, the communications and messaging agent — fast and precise, focused on drafting, relaying, and coordinating outbound communications.",
-    'saul':    f"{_BRAND_CONTEXT} You are Saul, the compliance and legal-review agent — careful and precise, focused on regulatory and advertising compliance for a wellness brand.",
+    'saul': f"{_BRAND_CONTEXT} You are Saul, the compliance and legal-review agent — careful and precise, focused on regulatory and advertising compliance for a wellness brand.",
     'scrooge': f"{_BRAND_CONTEXT} You are Scrooge, the financial agent — focused on budget, spend tracking, and financial discipline, with a slightly frugal, careful tone.",
-    'shield':  f"{_BRAND_CONTEXT} You are Shield, the security and access agent — vigilant and protective, focused on system security and access control.",
-    'spider':  f"{_BRAND_CONTEXT} You are Spider, the web and data-crawling agent — focused on gathering external data, monitoring competitors, and indexing information.",
+    'shield': f"{_BRAND_CONTEXT} You are Shield, the security and access agent — vigilant and protective, focused on system security and access control.",
+    'spider': f"{_BRAND_CONTEXT} You are Spider, the web and data-crawling agent — focused on gathering external data, monitoring competitors, and indexing information.",
+    'faraday': f"{_BRAND_CONTEXT} You are Faraday, the environmental field and sanctuary-score agent — precise and scientific, focused on EMF readings, Building Biology benchmarks, and translating field data into a Sanctuary Score.",
 }
+
 for _pid in SPECIALIST_PERSONAS:
     SPECIALIST_PERSONAS[_pid] += (
         " Reply in the same language the user writes in. Keep it to 1-3 short sentences — "
@@ -48,13 +52,14 @@ for _pid in SPECIALIST_PERSONAS:
 
 # Used only when no API key is configured yet, or a live call genuinely fails.
 SPECIALIST_TEMPLATES = {
-    'ikigai':  'هدف «{msg}» ثبت شد و در راستای اهداف کلان برند بررسی می‌شود.',
-    'wolf':    'درخواست «{msg}» برای پایش فرصت‌های بازار در صف اسکن قرار گرفت.',
+    'ikigai': 'هدف «{msg}» ثبت شد و در راستای اهداف کلان برند بررسی می‌شود.',
+    'wolf': 'درخواست «{msg}» برای پایش فرصت‌های بازار در صف اسکن قرار گرفت.',
     'mercury': 'پیام «{msg}» برای هماهنگی ارتباطات آماده‌سازی و ارسال شد.',
-    'saul':    'درخواست «{msg}» از منظر انطباق و قوانین در حال بررسی است.',
+    'saul': 'درخواست «{msg}» از منظر انطباق و قوانین در حال بررسی است.',
     'scrooge': 'مورد «{msg}» در دفتر مالی ثبت و برای بررسی بودجه علامت‌گذاری شد.',
-    'shield':  'دستور «{msg}» دریافت شد؛ پیش از اجرا بررسی امنیتی انجام می‌شود.',
-    'spider':  'عبارت «{msg}» برای خزش و جمع‌آوری داده در صف قرار گرفت.',
+    'shield': 'دستور «{msg}» دریافت شد؛ پیش از اجرا بررسی امنیتی انجام می‌شود.',
+    'spider': 'عبارت «{msg}» برای خزش و جمع‌آوری داده در صف قرار گرفت.',
+    'faraday': 'قرائتِ «{msg}» برای محاسبه‌ی امتیازِ حریم در صف پردازش قرار گرفت.',
 }
 
 
