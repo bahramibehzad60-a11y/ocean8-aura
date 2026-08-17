@@ -250,4 +250,96 @@ def cyborg_chat():
         'agent': 'cyborg',
         'consulted': consulted,
         'audio': audio
-    })
+    })# ---------------------------------------------------------------------------
+# ADD THIS TO cyborg.py — paste near the bottom, after _marketing_chain().
+# No changes needed anywhere else in cyborg.py, agents.py, or db.py.
+#
+# Why this exists: SPECIALIST_PERSONAS['saul'] in agents.py is deliberately
+# 1-3 sentences — right for a quick HUD/voice reply, wrong for auditing a
+# full client-facing report (Feng Shui, Sanctuary Score / Faraday, and
+# anything added later). This runs a SEPARATE, thorough Saul persona against
+# the whole report text and returns a structured verdict instead of a HUD
+# one-liner. It does not touch the HUD persona — that stays exactly as-is
+# for direct/voice use via /api/agents/saul/chat.
+# ---------------------------------------------------------------------------
+
+SAUL_AUDIT_PERSONA = (
+    "You are Saul, the compliance and legal-review agent for Ocean 8 — covering "
+    "both Ocean 8 Aura (luxury home wellness and energetic space restoration) and "
+    "Ocean 8's naturopathic software platform for Canadian clinics. You are reviewing "
+    "a full client-facing report BEFORE it is sent — not a live chat message.\n\n"
+    "Check for: (1) implied medical/health claims — any language stating or implying "
+    "a recommendation will cure, treat, prevent, or diagnose a condition; (2) absolute "
+    "or guaranteed outcomes not clinically substantiated; (3) misrepresented "
+    "credentials; (4) general misleading-advertising risk under Canadian consumer "
+    "protection norms. Apply extra scrutiny to any dirty-electricity findings "
+    "specifically — it is the least scientifically established of the four SBM EMF "
+    "categories, so hedge that language more than RF, electric-field, or "
+    "magnetic-field findings.\n\n"
+    "Respond in exactly this three-line format:\n"
+    "STATUS: Clear | Needs Revision | Needs Human Review\n"
+    "FLAGGED: <exact phrase(s) and why, or 'none'>\n"
+    "SUGGESTED: <compliant rewording preserving the original meaning, or 'n/a'>\n\n"
+    "Never silently pass a risk you noticed. Never rewrite the entire report — flag "
+    "and suggest, don't take over authorship. You are not a lawyer; for anything "
+    "genuinely ambiguous, STATUS is Needs Human Review, not a guess."
+)
+
+
+def _parse_audit_response(text):
+    """Parses the STATUS/FLAGGED/SUGGESTED format. Falls back to Needs Human
+    Review if the model didn't follow the format — never silently treats an
+    unparseable response as Clear."""
+    status, flagged, suggested = 'Needs Human Review', text, 'n/a'
+    for line in text.splitlines():
+        if line.upper().startswith('STATUS:'):
+            val = line.split(':', 1)[1].strip()
+            if val in ('Clear', 'Needs Revision', 'Needs Human Review'):
+                status = val
+        elif line.upper().startswith('FLAGGED:'):
+            flagged = line.split(':', 1)[1].strip()
+        elif line.upper().startswith('SUGGESTED:'):
+            suggested = line.split(':', 1)[1].strip()
+    return status, flagged, suggested
+
+
+def run_full_audit(report_text, report_type):
+    """Runs the FULL (non-HUD) Saul persona against a complete client-facing
+    report — Feng Shui, Sanctuary Score / Faraday, or anything added later.
+    Distinct from generate_specialist_reply('saul', ...) in agents.py, which
+    stays on the short HUD persona for live chat.
+
+    report_type: a short label like 'feng_shui' or 'sanctuary_score', logged
+    alongside the result so different report types stay distinguishable.
+
+    Returns (status, flagged, suggested, ok). status is one of 'Clear',
+    'Needs Revision', 'Needs Human Review' — or 'Needs Human Review' if the
+    call itself failed, since a failed audit must never be treated as a pass.
+    """
+    print(f"[Ocean8 Aura] FULL AUDIT for report_type={report_type!r}, "
+          f"{len(report_text)} chars")
+    if _client is None:
+        print("[Ocean8 Aura] run_full_audit: no Anthropic client configured (missing API key)")
+        _safe_log('saul_audit', f'[{report_type}] {report_text[:200]}', 'no API client configured', False)
+        return 'Needs Human Review', 'no API client configured', 'n/a', False
+    try:
+        response = _client.messages.create(
+            model=CHAT_MODEL,
+            max_tokens=500,
+            system=SAUL_AUDIT_PERSONA,
+            messages=[{
+                'role': 'user',
+                'content': f"Report type: {report_type}\n\nFull report text:\n{report_text}",
+            }],
+        )
+        text = ''.join(b.text for b in response.content if getattr(b, 'type', None) == 'text').strip()
+        status, flagged, suggested = _parse_audit_response(text)
+        ok = True
+        _safe_log('saul_audit', f'[{report_type}] {report_text[:200]}', text, ok)
+        print(f"[Ocean8 Aura] audit result for '{report_type}': {status}")
+        return status, flagged, suggested, ok
+    except Exception as e:
+        print(f"[Ocean8 Aura] Full audit failed for '{report_type}': {e}")
+        _safe_log('saul_audit', f'[{report_type}] {report_text[:200]}', str(e), False)
+        return 'Needs Human Review', f'audit call failed: {e}', 'n/a', False
+
