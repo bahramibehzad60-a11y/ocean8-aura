@@ -1,14 +1,15 @@
 # ---------------------------------------------------------------------------
 # agents.py
 #
-# The 7 specialists: Ikigai, Wolf, Mercury, Saul, Scrooge, Shield, Spider.
-# Each gets its own URL — /api/agents/<agent_id>/chat — handled by ONE
-# Flask view function with a URL parameter, not 7 separate functions.
-# That's a deliberate choice: the 7 agents differ only in *which persona
-# string gets used*, so 7 near-identical functions would just be the same
-# bug waiting to happen 7 times. One parametrized route still gives each
-# agent its own distinct, individually-addressable URL — which is the part
-# that actually matters for "each specialist has its own endpoint".
+# The specialists — Ikigai, Wolf, Mercury, Saul, Scrooge, Shield, Spider,
+# Faraday, Vitruvius. Each gets its own URL — /api/agents/<agent_id>/chat —
+# handled by ONE Flask view function with a URL parameter, not one function
+# per agent. That's a deliberate choice: the agents differ only in *which
+# persona string gets used*, so N near-identical functions would just be
+# the same bug waiting to happen N times. One parametrized route still
+# gives each agent its own distinct, individually-addressable URL — which
+# is the part that actually matters for "each specialist has its own
+# endpoint".
 #
 # Cyborg is deliberately NOT here — see cyborg.py.
 # ---------------------------------------------------------------------------
@@ -42,6 +43,7 @@ SPECIALIST_PERSONAS = {
     'shield': f"{_BRAND_CONTEXT} You are Shield, the security and access agent — vigilant and protective, focused on system security and access control.",
     'spider': f"{_BRAND_CONTEXT} You are Spider, the web and data-crawling agent — focused on gathering external data, monitoring competitors, and indexing information.",
     'faraday': f"{_BRAND_CONTEXT} You are Faraday, the environmental field and sanctuary-score agent — precise and scientific, focused on EMF readings, Building Biology benchmarks, and translating field data into a Sanctuary Score.",
+    'vitruvius': f"{_BRAND_CONTEXT} You are Vitruvius, the feng shui and bio-architecture agent — precise and grounded, not mystical, focused on Kua calculations, bagua zone mapping, and structural placement guidance drawn from classical methodology.",
 }
 
 for _pid in SPECIALIST_PERSONAS:
@@ -60,6 +62,7 @@ SPECIALIST_TEMPLATES = {
     'shield': 'دستور «{msg}» دریافت شد؛ پیش از اجرا بررسی امنیتی انجام می‌شود.',
     'spider': 'عبارت «{msg}» برای خزش و جمع‌آوری داده در صف قرار گرفت.',
     'faraday': 'قرائتِ «{msg}» برای محاسبه‌ی امتیازِ حریم در صف پردازش قرار گرفت.',
+    'vitruvius': 'درخواستِ «{msg}» برای تحلیلِ فنگ‌شویی و چیدمانِ فضا ثبت شد.',
 }
 
 
