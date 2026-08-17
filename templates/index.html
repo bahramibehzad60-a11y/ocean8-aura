@@ -22,7 +22,8 @@
                    "load": "34%", "lastAction": "...",
                    "log": ["...", "..."] },
       "wolf":{...}, "mercury":{...}, "saul":{...},
-      "scrooge":{...}, "shield":{...}, "spider":{...}, "faraday":{...}
+      "scrooge":{...}, "shield":{...}, "spider":{...}, "faraday":{...},
+      "vitruvius":{...}
     }
   }
 
@@ -41,7 +42,7 @@
   targetAgent — each agent has its own URL, there is no shared
   request-router endpoint anymore:
 
-    POST /api/agents/<agent_id>/chat   (the 8 specialists)
+    POST /api/agents/<agent_id>/chat   (the 9 specialists)
     POST /api/cyborg/chat              (cyborg only)
 
   Both take   { "message": "..." }   and return
@@ -589,14 +590,15 @@ var API_ENDPOINT = '/api/report';
 var POLL_INTERVAL_MS = 20000;
 
 var AGENTS = [
-  { id:'ikigai',  name:'IKIGAI',  role:'PURPOSE',  icon:'fa-yin-yang',      color:'#00f0ff' },
-  { id:'wolf',    name:'WOLF',    role:'SCOUT',    icon:'fa-paw',           color:'#38bdf8' },
-  { id:'mercury', name:'MERCURY', role:'RELAY',    icon:'fa-bolt',          color:'#0ea5e9' },
-  { id:'saul',    name:'SAUL',    role:'COUNSEL',  icon:'fa-gavel',         color:'#2f8fe0' },
-  { id:'scrooge', name:'SCROOGE', role:'LEDGER',   icon:'fa-sack-dollar',   color:'#f0c419' },
-  { id:'shield',  name:'SHIELD',  role:'SENTINEL', icon:'fa-shield-halved', color:'#9b6fe0' },
-  { id:'spider',  name:'SPIDER',  role:'CRAWLER',  icon:'fa-spider',       color:'#06b6d4' },
-  { id:'faraday', name:'FARADAY', role:'SCANNER',  icon:'fa-wave-square',  color:'#2dd4bf' }
+  { id:'ikigai',    name:'IKIGAI',    role:'PURPOSE',   icon:'fa-yin-yang',      color:'#00f0ff' },
+  { id:'wolf',      name:'WOLF',      role:'SCOUT',     icon:'fa-paw',           color:'#38bdf8' },
+  { id:'mercury',   name:'MERCURY',   role:'RELAY',     icon:'fa-bolt',          color:'#0ea5e9' },
+  { id:'saul',      name:'SAUL',      role:'COUNSEL',   icon:'fa-gavel',         color:'#2f8fe0' },
+  { id:'scrooge',   name:'SCROOGE',   role:'LEDGER',    icon:'fa-sack-dollar',   color:'#f0c419' },
+  { id:'shield',    name:'SHIELD',    role:'SENTINEL',  icon:'fa-shield-halved', color:'#9b6fe0' },
+  { id:'spider',    name:'SPIDER',    role:'CRAWLER',   icon:'fa-spider',       color:'#06b6d4' },
+  { id:'faraday',   name:'FARADAY',   role:'SCANNER',   icon:'fa-wave-square',  color:'#2dd4bf' },
+  { id:'vitruvius', name:'VITRUVIUS', role:'ARCHITECT', icon:'fa-compass',      color:'#cbab63' }
 ];
 
 /* The Cyborg itself — the central Synapse core, reachable via the ENGAGE
@@ -641,7 +643,10 @@ var DEMO_DATA = {
     log:['Rate-limited by 1 target host','Retry scheduled','Data cache 84% fresh'] },
   faraday:{ status:'standby', role:'Electromagnetic Field & Sanctuary Scanner', uptime:'99.90%', latency:'15ms', load:'12%',
     lastAction:'Awaiting first Sanctuary Score submission',
-    log:['Calibration nominal','No active readings queued','Standing by for field data'] }
+    log:['Calibration nominal','No active readings queued','Standing by for field data'] },
+  vitruvius:{ status:'standby', role:'Feng Shui & Bio-Architecture Advisor', uptime:'99.85%', latency:'19ms', load:'8%',
+    lastAction:'Awaiting first Feng Shui assessment request',
+    log:['Methodology reference loaded','No active assessments queued','Standing by for client data'] }
 };
 
 /* =================================================================
