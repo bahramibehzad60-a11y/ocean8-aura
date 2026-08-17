@@ -7,12 +7,14 @@ from db import get_db, init_db, log_interaction
 from agents import agents_bp
 from cyborg import cyborg_bp, handle_message as cyborg_handle_message
 from faraday import faraday_bp
+from vitruvius import vitruvius_bp
 
 app = Flask(__name__)
 init_db()
 app.register_blueprint(agents_bp)
 app.register_blueprint(cyborg_bp)
 app.register_blueprint(faraday_bp)
+app.register_blueprint(vitruvius_bp)
 
 
 # ---------------------------------------------------------------------------
