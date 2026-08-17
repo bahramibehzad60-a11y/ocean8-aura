@@ -22,7 +22,7 @@
                    "load": "34%", "lastAction": "...",
                    "log": ["...", "..."] },
       "wolf":{...}, "mercury":{...}, "saul":{...},
-      "scrooge":{...}, "shield":{...}, "spider":{...}
+      "scrooge":{...}, "shield":{...}, "spider":{...}, "faraday":{...}
     }
   }
 
@@ -41,7 +41,7 @@
   targetAgent — each agent has its own URL, there is no shared
   request-router endpoint anymore:
 
-    POST /api/agents/<agent_id>/chat   (the 7 specialists)
+    POST /api/agents/<agent_id>/chat   (the 8 specialists)
     POST /api/cyborg/chat              (cyborg only)
 
   Both take   { "message": "..." }   and return
@@ -595,7 +595,8 @@ var AGENTS = [
   { id:'saul',    name:'SAUL',    role:'COUNSEL',  icon:'fa-gavel',         color:'#2f8fe0' },
   { id:'scrooge', name:'SCROOGE', role:'LEDGER',   icon:'fa-sack-dollar',   color:'#f0c419' },
   { id:'shield',  name:'SHIELD',  role:'SENTINEL', icon:'fa-shield-halved', color:'#9b6fe0' },
-  { id:'spider',  name:'SPIDER',  role:'CRAWLER',  icon:'fa-spider',       color:'#06b6d4' }
+  { id:'spider',  name:'SPIDER',  role:'CRAWLER',  icon:'fa-spider',       color:'#06b6d4' },
+  { id:'faraday', name:'FARADAY', role:'SCANNER',  icon:'fa-wave-square',  color:'#2dd4bf' }
 ];
 
 /* The Cyborg itself — the central Synapse core, reachable via the ENGAGE
@@ -637,7 +638,10 @@ var DEMO_DATA = {
     log:['0 intrusion attempts','Firewall rules current','Last credential rotation: today'] },
   spider:{ status:'warning', role:'Web & Data Crawler', uptime:'98.42%', latency:'63ms', load:'78%',
     lastAction:'Indexed competitor directory listings',
-    log:['Rate-limited by 1 target host','Retry scheduled','Data cache 84% fresh'] }
+    log:['Rate-limited by 1 target host','Retry scheduled','Data cache 84% fresh'] },
+  faraday:{ status:'standby', role:'Electromagnetic Field & Sanctuary Scanner', uptime:'99.90%', latency:'15ms', load:'12%',
+    lastAction:'Awaiting first Sanctuary Score submission',
+    log:['Calibration nominal','No active readings queued','Standing by for field data'] }
 };
 
 /* =================================================================
@@ -1151,7 +1155,7 @@ function buildAgentNodes(){
       '<span class="agent-node-role">' + agent.role + '</span>' +
       '<span class="agent-node-status"><span class="dot"></span></span>';
     el.addEventListener('click', function(){ selectAgent(agent.id); });
-    (i < 3 ? left : right).appendChild(el);
+    (i < 4 ? left : right).appendChild(el);
   });
 
   els.agentOrbit.appendChild(left);
