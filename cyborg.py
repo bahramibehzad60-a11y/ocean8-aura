@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from anthropic import Anthropic
 import os
 import base64
+import json
 
 from db import log_interaction
 from agents import SPECIALIST_IDS, generate_specialist_reply
@@ -11,6 +12,7 @@ cyborg_bp = Blueprint('cyborg', __name__)
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY')
 ELEVENLABS_API_KEY = os.environ.get('ELEVENLABS_API_KEY')
 _client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=20.0) if ANTHROPIC_API_KEY else None
+
 CHAT_MODEL = 'claude-haiku-4-5-20251001'
 CYBURG_VOICE_ID = 'TX3LPaxmHKxFdv7VOQHJ'  # Liam
 
@@ -158,10 +160,8 @@ def _marketing_chain(message):
     saul_reply, saul_ok = generate_specialist_reply('saul', saul_question)
     _safe_log('saul', saul_question, saul_reply, saul_ok)
     consulted = ['mercury', 'saul']
-
     if _client is None:
         return CYBORG_TEMPLATE.format(msg=message), True, consulted
-
     try:
         synth = _client.messages.create(
             model=CHAT_MODEL,
@@ -189,11 +189,9 @@ def handle_message(message, max_rounds=3):
     if _client is None:
         print("[Ocean8 Aura] handle_message: no Anthropic client configured (missing API key)")
         return CYBORG_TEMPLATE.format(msg=message), True, []
-
     if _looks_like_marketing_request(message):
         return _marketing_chain(message)
     print(f"[Ocean8 Aura] general tool-loop path (not marketing-flagged) for: {message!r}")
-
     consulted = []
     messages = [{'role': 'user', 'content': message}]
     try:
@@ -250,17 +248,21 @@ def cyborg_chat():
         'agent': 'cyborg',
         'consulted': consulted,
         'audio': audio
-    })# ---------------------------------------------------------------------------
-# ADD THIS TO cyborg.py — paste near the bottom, after _marketing_chain().
-# No changes needed anywhere else in cyborg.py, agents.py, or db.py.
+    })
+
+
+# ---------------------------------------------------------------------------
+# Full-report audit mode for SAUL.
 #
-# Why this exists: SPECIALIST_PERSONAS['saul'] in agents.py is deliberately
-# 1-3 sentences — right for a quick HUD/voice reply, wrong for auditing a
-# full client-facing report (Feng Shui, Sanctuary Score / Faraday, and
-# anything added later). This runs a SEPARATE, thorough Saul persona against
-# the whole report text and returns a structured verdict instead of a HUD
-# one-liner. It does not touch the HUD persona — that stays exactly as-is
-# for direct/voice use via /api/agents/saul/chat.
+# The HUD-mode Saul persona in agents.py is deliberately 1-3 sentences —
+# right for a quick voice/HUD reply, wrong for auditing a full client-facing
+# report (Feng Shui, Sanctuary Score / Faraday, and anything added later).
+# This runs a SEPARATE, thorough Saul persona against the whole report text
+# and returns a structured verdict. It does not touch the HUD persona —
+# that stays exactly as-is for direct/voice use via /api/agents/saul/chat.
+#
+# Responses are required as JSON (not a custom line format) specifically so
+# parsing either fully succeeds or fails loudly — no silent empty fields.
 # ---------------------------------------------------------------------------
 
 SAUL_AUDIT_PERSONA = (
@@ -276,31 +278,49 @@ SAUL_AUDIT_PERSONA = (
     "specifically — it is the least scientifically established of the four SBM EMF "
     "categories, so hedge that language more than RF, electric-field, or "
     "magnetic-field findings.\n\n"
-    "Respond in exactly this three-line format:\n"
-    "STATUS: Clear | Needs Revision | Needs Human Review\n"
-    "FLAGGED: <exact phrase(s) and why, or 'none'>\n"
-    "SUGGESTED: <compliant rewording preserving the original meaning, or 'n/a'>\n\n"
+    "Respond with ONLY a JSON object, no other text before or after it, and no "
+    "markdown code fences, in exactly this shape:\n"
+    '{"status": "Clear", "flagged": "", "suggested": ""}\n'
+    "status must be exactly one of: \"Clear\", \"Needs Revision\", \"Needs Human Review\". "
+    "flagged: the exact phrase(s) and why, or an empty string only if status is Clear. "
+    "suggested: a compliant rewording preserving the original meaning, or an empty "
+    "string only if status is Clear.\n\n"
     "Never silently pass a risk you noticed. Never rewrite the entire report — flag "
     "and suggest, don't take over authorship. You are not a lawyer; for anything "
-    "genuinely ambiguous, STATUS is Needs Human Review, not a guess."
+    "genuinely ambiguous, status is \"Needs Human Review\", not a guess."
 )
 
 
 def _parse_audit_response(text):
-    """Parses the STATUS/FLAGGED/SUGGESTED format. Falls back to Needs Human
-    Review if the model didn't follow the format — never silently treats an
-    unparseable response as Clear."""
-    status, flagged, suggested = 'Needs Human Review', text, 'n/a'
-    for line in text.splitlines():
-        if line.upper().startswith('STATUS:'):
-            val = line.split(':', 1)[1].strip()
-            if val in ('Clear', 'Needs Revision', 'Needs Human Review'):
-                status = val
-        elif line.upper().startswith('FLAGGED:'):
-            flagged = line.split(':', 1)[1].strip()
-        elif line.upper().startswith('SUGGESTED:'):
-            suggested = line.split(':', 1)[1].strip()
-    return status, flagged, suggested
+    """Parses SAUL's JSON verdict. Falls back to Needs Human Review if the
+    model's output isn't valid JSON, or if status is missing/invalid, or if
+    a non-Clear status came back with no explanation — never silently treats
+    an unparseable or under-explained response as Clear."""
+    cleaned = text.strip()
+    if cleaned.startswith('```'):
+        cleaned = cleaned.strip('`')
+        if cleaned[:4].lower() == 'json':
+            cleaned = cleaned[4:]
+        cleaned = cleaned.strip()
+    try:
+        data = json.loads(cleaned)
+        status = data.get('status')
+        if status not in ('Clear', 'Needs Revision', 'Needs Human Review'):
+            print(f"[Ocean8 Aura] SAUL returned an invalid status value: {status!r}")
+            return 'Needs Human Review', f'invalid status from model: {status!r}', 'n/a'
+        flagged = (data.get('flagged') or '').strip()
+        suggested = (data.get('suggested') or '').strip() or 'n/a'
+        if status != 'Clear' and not flagged:
+            # A non-Clear verdict with no stated reason is itself a failure —
+            # force human review rather than surface an unexplained "Needs Revision".
+            flagged = '(model gave no reason — treat as needing human review)'
+            status = 'Needs Human Review'
+        if status == 'Clear' and not flagged:
+            flagged = 'none'
+        return status, flagged, suggested
+    except Exception as e:
+        print(f"[Ocean8 Aura] Could not parse SAUL audit JSON: {e} — raw text: {text[:300]!r}")
+        return 'Needs Human Review', f'could not parse audit response: {text[:300]}', 'n/a'
 
 
 def run_full_audit(report_text, report_type):
@@ -342,4 +362,3 @@ def run_full_audit(report_text, report_type):
         print(f"[Ocean8 Aura] Full audit failed for '{report_type}': {e}")
         _safe_log('saul_audit', f'[{report_type}] {report_text[:200]}', str(e), False)
         return 'Needs Human Review', f'audit call failed: {e}', 'n/a', False
-
