@@ -263,6 +263,12 @@ def cyborg_chat():
 #
 # Responses are required as JSON (not a custom line format) specifically so
 # parsing either fully succeeds or fails loudly — no silent empty fields.
+#
+# temperature=0 is set ONLY on this call, not on the HUD persona calls in
+# agents.py. Deliberate: a compliance verdict on the SAME report should be
+# reproducible — flip-flopping between Clear and Needs Revision on identical
+# input is a real problem for a legal-review function. The HUD chat replies
+# don't carry that requirement, so they're left as-is.
 # ---------------------------------------------------------------------------
 
 SAUL_AUDIT_PERSONA = (
@@ -346,6 +352,7 @@ def run_full_audit(report_text, report_type):
         response = _client.messages.create(
             model=CHAT_MODEL,
             max_tokens=500,
+            temperature=0,
             system=SAUL_AUDIT_PERSONA,
             messages=[{
                 'role': 'user',
