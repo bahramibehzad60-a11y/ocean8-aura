@@ -10,7 +10,11 @@
 # — every report goes through cyborg.run_full_audit() first, the same gate
 # the Feng Shui reports use.
 #
-# THRESHOLD SOURCING — read before editing SBM_THRESHOLDS:
+# Now wired to db.py: every request creates/updates a client record (keyed
+# by email), and a Clear report is permanently saved via
+# save_sanctuary_report() instead of only existing in the HTTP response.
+#
+# CONVENTION NOTE — read before trusting the numbers for a real client:
 # ac_magnetic_mg is transcribed directly from the official SBM-2015
 # sleeping-area table. ac_electric_vm and rf_microwave_uwm2 are
 # reconstructed from building-biology secondary sources and are NOT
@@ -20,16 +24,12 @@
 # dirty_electricity_gs comes from the meter manufacturers' own published
 # guidance (Stetzerizer / Greenwave), not from the SBM document itself,
 # since GS units are meter-specific, not part of the SBM standard.
-#
-# REGISTRATION — one line needed in main.py, alongside the existing blueprints:
-#   from faraday import faraday_bp
-#   app.register_blueprint(faraday_bp)
 # ---------------------------------------------------------------------------
 
 from flask import Blueprint, request, jsonify
 
 from cyborg import run_full_audit
-from db import log_interaction
+from db import log_interaction, get_or_create_client, save_sanctuary_report
 
 faraday_bp = Blueprint('faraday', __name__)
 
@@ -132,20 +132,32 @@ def draft_report(client_name, property_address, readings):
 def sanctuary_report():
     body = request.get_json(silent=True) or {}
     client_name = str(body.get('client_name') or '').strip()
+    email = str(body.get('email') or '').strip()
+    phone = str(body.get('phone') or '').strip()
     property_address = str(body.get('property_address') or '').strip()
     readings = body.get('readings') or []
 
-    if not client_name or not readings:
-        return jsonify({'status': 'error', 'reply': 'client_name و readings الزامی هستند.'}), 400
+    if not client_name or not email or not readings:
+        return jsonify({'status': 'error', 'reply': 'client_name، email و readings الزامی هستند.'}), 400
+
+    client_id = get_or_create_client(client_name, email, phone=phone, property_address=property_address)
 
     draft = draft_report(client_name, property_address, readings)
     status, flagged, suggested, ok = run_full_audit(draft, 'sanctuary_score')
     log_interaction('faraday', f'report request for {client_name}', draft, ok=1 if ok else 0)
 
     if status == 'Clear':
-        return jsonify({'status': 'success', 'agent': 'faraday', 'audit_status': status, 'report': draft})
+        score, flagged_zones, _ = score_property(readings)
+        report_id = save_sanctuary_report(client_id, property_address, score, flagged_zones, readings, draft, status)
+        return jsonify({
+            'status': 'success',
+            'agent': 'faraday',
+            'audit_status': status,
+            'report': draft,
+            'client_id': client_id,
+            'report_id': report_id,
+        })
 
-    # Needs Revision or Needs Human Review — never auto-sent to the client
     return jsonify({
         'status': 'held',
         'agent': 'faraday',
@@ -153,4 +165,5 @@ def sanctuary_report():
         'flagged': flagged,
         'suggested': suggested,
         'draft': draft,
+        'client_id': client_id,
     }), 202
