@@ -10,13 +10,26 @@
 # — every report goes through cyborg.run_full_audit() first, the same gate
 # the Feng Shui reports use.
 #
+# TONE NOTE: concern-level wording (REPORT_STRINGS[*]['levels']) is
+# deliberately process-oriented ("above reference level, review
+# recommended") rather than emotionally judgmental ("concern") — the goal
+# is to inform, not to alarm a client who is likely already anxious.
+# "Reference level" is used instead of any wording implying a legal or
+# regulatory limit, since SBM-2015 is a voluntary building-biology
+# benchmark, not a government standard — implying otherwise would itself
+# be a misleading claim.
+#
 # LANGUAGE NOTE: unlike vitruvius.py, the report text here is built entirely
 # from fixed Python templates (REPORT_STRINGS below) rather than an LLM call
 # — deliberate, since the content (a score plus a flagged-room list) doesn't
 # need interpretation, only correct arithmetic. But a fixed template only
 # speaks one language unless it's told which one: pass language='fa' for a
 # Persian-language report, defaults to 'en' for backward compatibility with
-# earlier requests that didn't specify it.
+# earlier requests that didn't specify it. Watch for connotation drift when
+# translating level/status words specifically — a term that's emotionally
+# neutral in English can carry unintended clinical weight in another
+# language (e.g. an earlier Persian draft used حاد, "acute", a term with
+# strong clinical associations that "extreme" doesn't carry in English).
 #
 # Wired to db.py: every request creates/updates a client record (keyed by
 # email), and a Clear report is permanently saved via save_sanctuary_report().
@@ -47,6 +60,10 @@ SBM_THRESHOLDS = {
     'dirty_electricity_gs':{'no_concern': 25.0,'slight_concern': 50.0,'severe_concern': 100.0},
 }
 # Anything above severe_concern's value falls into extreme_concern.
+# (Internal dict keys stay as no_concern/slight_concern/severe_concern/
+# extreme_concern throughout the code — only the CLIENT-FACING label text
+# in REPORT_STRINGS below changed. Renaming the internal keys would touch
+# many places for zero user-facing benefit.)
 
 CONCERN_LEVELS = ['no_concern', 'slight_concern', 'severe_concern', 'extreme_concern']
 CONCERN_PENALTY = {'no_concern': 0, 'slight_concern': 3, 'severe_concern': 8, 'extreme_concern': 15}
@@ -57,12 +74,12 @@ REPORT_STRINGS = {
         'property': 'Property: {address}',
         'score': 'Overall Sanctuary Score: {score}/100',
         'all_clear': (
-            "All measured areas fell within the 'No Concern' band of the Building "
+            "All measured areas fell within the normal range of the Building "
             "Biology SBM-2015 sleeping-area guidelines. No specific zones are "
             "flagged this visit."
         ),
         'flagged_header': 'Flagged areas, most significant first:',
-        'flagged_line': "- {room}: {label} measured at {value}, in the '{level}' band.",
+        'flagged_line': "- {room}: {label} measured at {value} ({level}).",
         'disclaimer': (
             "This assessment follows the Building Biology SBM-2015 precautionary "
             "framework. Findings on dirty electricity specifically reflect the least "
@@ -70,10 +87,10 @@ REPORT_STRINGS = {
             "reported with that in mind."
         ),
         'levels': {
-            'no_concern': 'no concern',
-            'slight_concern': 'slight concern',
-            'severe_concern': 'severe concern',
-            'extreme_concern': 'extreme concern',
+            'no_concern': 'within normal range',
+            'slight_concern': 'slightly above reference level',
+            'severe_concern': 'above reference level, review recommended',
+            'extreme_concern': 'significantly above reference level, review recommended',
         },
         'metrics': {
             'ac_magnetic_mg': 'AC magnetic field',
@@ -87,22 +104,22 @@ REPORT_STRINGS = {
         'property': 'ملک: {address}',
         'score': 'امتیازِ کلیِ حریم: {score}/100',
         'all_clear': (
-            "همه‌ی مناطقِ اندازه‌گیری‌شده در محدوده‌ی «بدونِ نگرانی»ِ دستورالعمل‌های "
+            "همه‌ی مناطقِ اندازه‌گیری‌شده در محدوده‌ی طبیعیِ دستورالعمل‌های "
             "Building Biology SBM-2015 قرار داشتند. هیچ منطقه‌ی خاصی در این بازدید "
             "پرچم‌گذاری نشده است."
         ),
         'flagged_header': 'مناطقِ پرچم‌خورده، از مهم‌ترین:',
-        'flagged_line': "- {room}: {label} با مقدارِ {value}، در محدوده‌ی «{level}».",
+        'flagged_line': "- {room}: {label} با مقدارِ {value} ({level}).",
         'disclaimer': (
             "این ارزیابی بر اساسِ چارچوبِ احتیاطیِ Building Biology SBM-2015 انجام "
             "شده است. یافته‌های مربوط به الکتریسیته‌ی کثیف، به‌طورِ خاص، کم‌تأییدشده‌ترین "
             "دسته از میانِ چهار دسته‌ی اندازه‌گیری‌شده است و با همین ملاحظه گزارش می‌شود."
         ),
         'levels': {
-            'no_concern': 'بدون نگرانی',
-            'slight_concern': 'نگرانیِ خفیف',
-            'severe_concern': 'نگرانیِ جدی',
-            'extreme_concern': 'نگرانیِ حاد',
+            'no_concern': 'در محدوده‌ی طبیعی',
+            'slight_concern': 'کمی بالاتر از سطحِ مرجع',
+            'severe_concern': 'بالاتر از سطحِ مرجع، نیازمندِ بررسی',
+            'extreme_concern': 'به‌طورِ قابل‌توجه بالاتر از سطحِ مرجع، نیازمندِ بررسیِ فوری',
         },
         'metrics': {
             'ac_magnetic_mg': 'میدانِ مغناطیسیِ متناوب',
@@ -224,3 +241,4 @@ def sanctuary_report():
         'draft': draft,
         'client_id': client_id,
     }), 202
+    
