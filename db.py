@@ -199,3 +199,14 @@ def save_feng_shui_report(client_id, property_address, kua_number, kua_group, fa
     conn.commit()
     conn.close()
     return cur.lastrowid
+
+
+def get_client(client_id):
+    """Returns the client's row as a plain dict, or None if no such client
+    exists. Minimal read-back for verification right now; the eventual
+    admin panel will build on this same function to also pull each
+    client's report history."""
+    conn = get_db()
+    row = conn.execute('SELECT * FROM clients WHERE id = ?', (client_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
