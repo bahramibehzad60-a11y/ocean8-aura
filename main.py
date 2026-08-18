@@ -3,7 +3,7 @@ import time
 from datetime import datetime, timedelta
 
 from agent_registry import AGENT_META
-from db import get_db, init_db, log_interaction
+from db import get_db, init_db, log_interaction, get_client
 from agents import agents_bp
 from cyborg import cyborg_bp, handle_message as cyborg_handle_message
 from faraday import faraday_bp
@@ -23,6 +23,21 @@ app.register_blueprint(vitruvius_bp)
 @app.route('/')
 def home():
     return render_template('index.html')
+
+
+# ---------------------------------------------------------------------------
+# Client lookup — read-only, for verification and as a building block for
+# the eventual admin panel. Returns the client's current row exactly as
+# stored, so it's possible to confirm a field set by one report type (e.g.
+# birth_date from a Vitruvius request) survived an unrelated later request
+# (e.g. a Faraday request, which doesn't carry birth_date/gender).
+# ---------------------------------------------------------------------------
+@app.route('/api/clients/<int:client_id>')
+def get_client_route(client_id):
+    client = get_client(client_id)
+    if not client:
+        return jsonify({'status': 'error', 'reply': 'Client not found.'}), 404
+    return jsonify({'status': 'success', 'client': client})
 
 
 # ---------------------------------------------------------------------------
