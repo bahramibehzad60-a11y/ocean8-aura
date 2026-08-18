@@ -10,14 +10,12 @@
 # computed in Python (calculate_kua + KUA_TRIGRAMS below) — deterministic,
 # not left to the model. The Kua Profile section of the report is built as
 # a literal Python string and the model is instructed to insert it VERBATIM,
-# not paraphrase it. This is deliberately stricter than just "telling" the
-# model the verified number: an earlier version did that and the model
-# still silently recomputed its own Kua number using a different (also
-# real, but different) convention — same East/West group, so the favorable/
-# unfavorable directions still matched and the error wasn't obvious at a
-# glance, but the stated number and trigram were wrong. _kua_number_present()
-# below is a second line of defense that checks the model actually kept the
-# verified number in its output.
+# not paraphrase it. An earlier version just told the model the verified
+# number and the model still silently recomputed its own — same East/West
+# group, so the favorable/unfavorable directions still matched and the error
+# wasn't obvious at a glance, but the stated number and trigram were wrong.
+# _kua_number_present() below is a second line of defense that checks the
+# model actually kept the verified number in its output.
 #
 # Bagua zone mapping onto an actual floor plan, Flying Star analysis, and
 # recommendations stay model-generated, since those genuinely require
@@ -31,6 +29,10 @@
 # DIFFERENT Kua numbers for the same birth year. If Ocean 8's own reference
 # handbook specifies that version, update calculate_kua to match it exactly.
 #
+# Now wired to db.py: every request creates/updates a client record (keyed
+# by email), and a Clear report is permanently saved via
+# save_feng_shui_report() instead of only existing in the HTTP response.
+#
 # The draft NEVER reaches a client directly — every report goes through
 # cyborg.run_full_audit() first, the same gate Faraday's reports use — but
 # only AFTER passing the Kua-number sanity check, since a wrong number is a
@@ -42,7 +44,7 @@ from anthropic import Anthropic
 import os
 
 from cyborg import run_full_audit
-from db import log_interaction
+from db import log_interaction, get_or_create_client, save_feng_shui_report
 
 vitruvius_bp = Blueprint('vitruvius', __name__)
 
@@ -169,17 +171,20 @@ def draft_report(client_name, property_address, birth_date, gender,
                   facing_direction, room_layout, construction_year=None):
     """Computes the Kua profile in Python (deterministic), then calls Claude
     with that fixed block plus the qualitative inputs to produce the full
-    narrative report. Returns (draft_text, kua, kua_ok). kua_ok is True if
-    no birth year was given (nothing to validate) or if the verified number
-    actually appears in the model's draft; False if the model likely
-    recomputed its own. Never sends anything — the route below is
-    responsible for that, after checking kua_ok and passing run_full_audit()."""
+    narrative report. Returns (draft_text, kua, group, kua_ok). group is
+    returned alongside kua so the route can save both without recomputing
+    calculate_kua a second time. kua_ok is True if no birth year was given
+    (nothing to validate) or if the verified number actually appears in the
+    model's draft; False if the model likely recomputed its own. Never
+    sends anything — the route below is responsible for that, after
+    checking kua_ok and passing run_full_audit()."""
     try:
         birth_year = int(str(birth_date).strip()[:4])
     except (ValueError, TypeError):
         birth_year = None
 
     kua = None
+    group = None
     kua_profile_block = "No valid birth year was provided — Kua profile cannot be computed."
     if birth_year:
         kua, group, favorable, unfavorable = calculate_kua(birth_year, gender)
@@ -192,7 +197,7 @@ def draft_report(client_name, property_address, birth_date, gender,
             "No Anthropic API client is configured — this is a placeholder, "
             "not a real assessment."
         )
-        return text, kua, True
+        return text, kua, group, True
 
     user_content = (
         f"Client: {client_name}\n"
@@ -215,20 +220,22 @@ def draft_report(client_name, property_address, birth_date, gender,
         )
         text = ''.join(b.text for b in response.content if getattr(b, 'type', None) == 'text').strip()
         if not text:
-            return f"Vitruvius Feng Shui Report — {client_name}\n(model returned an empty response)", kua, False
+            return f"Vitruvius Feng Shui Report — {client_name}\n(model returned an empty response)", kua, group, False
         kua_ok = (kua is None) or _kua_number_present(text, kua)
         if not kua_ok:
             print(f"[Ocean8 Aura] Vitruvius: draft did NOT contain verified Kua number {kua} — likely recomputed independently")
-        return text, kua, kua_ok
+        return text, kua, group, kua_ok
     except Exception as e:
         print(f"[Ocean8 Aura] Vitruvius draft_report failed: {e}")
-        return f"Vitruvius Feng Shui Report — {client_name}\n\nDraft generation failed: {e}", kua, False
+        return f"Vitruvius Feng Shui Report — {client_name}\n\nDraft generation failed: {e}", kua, group, False
 
 
 @vitruvius_bp.route('/api/vitruvius/feng-shui-report', methods=['POST'])
 def feng_shui_report():
     body = request.get_json(silent=True) or {}
     client_name = str(body.get('client_name') or '').strip()
+    email = str(body.get('email') or '').strip()
+    phone = str(body.get('phone') or '').strip()
     property_address = str(body.get('property_address') or '').strip()
     birth_date = str(body.get('birth_date') or '').strip()
     gender = str(body.get('gender') or '').strip()
@@ -236,14 +243,17 @@ def feng_shui_report():
     room_layout = str(body.get('room_layout') or '').strip()
     construction_year = body.get('construction_year')
 
-    if not client_name or not birth_date or not gender or not facing_direction or not room_layout:
+    if not client_name or not email or not birth_date or not gender or not facing_direction or not room_layout:
         return jsonify({
             'status': 'error',
-            'reply': 'client_name، birth_date، gender، facing_direction و room_layout الزامی هستند.'
+            'reply': 'client_name، email، birth_date، gender، facing_direction و room_layout الزامی هستند.'
         }), 400
 
-    draft, kua, kua_ok = draft_report(client_name, property_address, birth_date, gender,
-                                       facing_direction, room_layout, construction_year)
+    client_id = get_or_create_client(client_name, email, phone=phone, property_address=property_address,
+                                      birth_date=birth_date, gender=gender)
+
+    draft, kua, group, kua_ok = draft_report(client_name, property_address, birth_date, gender,
+                                              facing_direction, room_layout, construction_year)
 
     if kua is not None and not kua_ok:
         log_interaction('vitruvius', f'report request for {client_name}', draft, ok=0)
@@ -254,13 +264,23 @@ def feng_shui_report():
             'flagged': f'Model draft did not contain the verified Kua number ({kua}) — likely recomputed it independently. Factual-accuracy issue, caught before the compliance check.',
             'suggested': 'n/a',
             'draft': draft,
+            'client_id': client_id,
         }), 202
 
     status, flagged, suggested, ok = run_full_audit(draft, 'feng_shui')
     log_interaction('vitruvius', f'report request for {client_name}', draft, ok=1 if ok else 0)
 
     if status == 'Clear':
-        return jsonify({'status': 'success', 'agent': 'vitruvius', 'audit_status': status, 'report': draft})
+        report_id = save_feng_shui_report(client_id, property_address, kua, group,
+                                           facing_direction, room_layout, construction_year, draft, status)
+        return jsonify({
+            'status': 'success',
+            'agent': 'vitruvius',
+            'audit_status': status,
+            'report': draft,
+            'client_id': client_id,
+            'report_id': report_id,
+        })
 
     return jsonify({
         'status': 'held',
@@ -269,4 +289,5 @@ def feng_shui_report():
         'flagged': flagged,
         'suggested': suggested,
         'draft': draft,
+        'client_id': client_id,
     }), 202
