@@ -275,6 +275,14 @@ def cyborg_chat():
 # reproducible — flip-flopping between Clear and Needs Revision on identical
 # input is a real problem for a legal-review function. The HUD chat replies
 # don't carry that requirement, so they're left as-is.
+#
+# max_tokens=1200 (raised from an original 500): a report with several
+# distinct compliance concerns needs room for multiple quoted lines plus a
+# suggested rewrite for each. At 500, a multi-issue verdict on a longer
+# report (e.g. Vitruvius's ~600-word Feng Shui reports) could get cut off
+# mid-JSON, which fails to parse. stop_reason is checked explicitly below
+# so a genuine truncation produces a clear, specific diagnostic instead of
+# a generic "could not parse" message.
 # ---------------------------------------------------------------------------
 
 SAUL_AUDIT_PERSONA = (
@@ -295,8 +303,11 @@ SAUL_AUDIT_PERSONA = (
     '{"status": "Clear", "flagged": "", "suggested": ""}\n'
     "status must be exactly one of: \"Clear\", \"Needs Revision\", \"Needs Human Review\". "
     "flagged: the exact phrase(s) and why, or an empty string only if status is Clear. "
-    "suggested: a compliant rewording preserving the original meaning, or an empty "
-    "string only if status is Clear.\n\n"
+    "If multiple lines are problematic, keep each one brief — quote only the specific "
+    "phrase, not the full sentence, and keep your reasoning to one short clause per "
+    "issue. suggested: a compliant rewording preserving the original meaning, or an "
+    "empty string only if status is Clear. Be concise here too — a short replacement "
+    "phrase, not a restated paragraph.\n\n"
     "Never silently pass a risk you noticed. Never rewrite the entire report — flag "
     "and suggest, don't take over authorship. You are not a lawyer; for anything "
     "genuinely ambiguous, status is \"Needs Human Review\", not a guess."
@@ -357,7 +368,7 @@ def run_full_audit(report_text, report_type):
     try:
         response = _client.messages.create(
             model=CHAT_MODEL,
-            max_tokens=500,
+            max_tokens=1200,
             temperature=0,
             system=SAUL_AUDIT_PERSONA,
             messages=[{
@@ -366,6 +377,16 @@ def run_full_audit(report_text, report_type):
             }],
         )
         text = ''.join(b.text for b in response.content if getattr(b, 'type', None) == 'text').strip()
+        if response.stop_reason == 'max_tokens':
+            print(f"[Ocean8 Aura] SAUL audit response was TRUNCATED (hit max_tokens) for '{report_type}'")
+            _safe_log('saul_audit', f'[{report_type}] {report_text[:200]}', text, False)
+            return (
+                'Needs Human Review',
+                "SAUL's compliance response was cut off before finishing — likely too many "
+                "issues found for the current length limit. Needs a human look.",
+                'n/a',
+                False,
+            )
         status, flagged, suggested = _parse_audit_response(text)
         ok = True
         _safe_log('saul_audit', f'[{report_type}] {report_text[:200]}', text, ok)
