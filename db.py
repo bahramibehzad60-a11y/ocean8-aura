@@ -123,17 +123,25 @@ def log_interaction(agent_name, message, response, ok=1):
 
 
 def get_or_create_client(name, email, phone='', property_address='', birth_date='', gender=''):
-    """Looks up a client by email; updates their info if found, creates a
-    new record if not. Email is treated as the unique identifier so a
-    returning client filling the form again updates their existing record
-    instead of creating a duplicate. Returns the client's id either way."""
+    """Looks up a client by email; if found, updates only the fields that
+    were actually provided (non-empty) -- so a later call with partial info
+    (e.g. a Sanctuary Score request, which has no birth_date/gender) never
+    wipes out data an earlier call already stored. Creates a new record if
+    no client with this email exists yet. Returns the client's id either way."""
     conn = get_db()
-    existing = conn.execute('SELECT id FROM clients WHERE email = ?', (email,)).fetchone()
+    existing = conn.execute('SELECT * FROM clients WHERE email = ?', (email,)).fetchone()
     if existing:
         client_id = existing['id']
         conn.execute(
             'UPDATE clients SET name=?, phone=?, property_address=?, birth_date=?, gender=? WHERE id=?',
-            (name, phone, property_address, birth_date, gender, client_id)
+            (
+                name or existing['name'],
+                phone or existing['phone'],
+                property_address or existing['property_address'],
+                birth_date or existing['birth_date'],
+                gender or existing['gender'],
+                client_id,
+            )
         )
     else:
         cur = conn.execute(
